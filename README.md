@@ -40,7 +40,7 @@ Open `http://localhost:8080`.
 - Signed ActivityPub delivery to follower inboxes
 - VAPID subscription storage and push delivery
 - Settings mutations, export, migration, and delete flows
-- Cloudflare/Resend credentials, then DNS and Email Routing activation
+- Full auth/session flows for production users
 
 ## Cloudflare setup
 
@@ -62,13 +62,13 @@ export RESEND_DKIM_VALUE=...
 ./deploy/cloudflare-records.sh
 ```
 
-Email Routing still needs to be enabled for the zone in Cloudflare before inbound routes can run. Attach `cloudflare/email-worker.js` to the inbound route and set Worker secrets `IGREC_INBOUND_URL=https://igrec.net/inbound/email` and `APP_SECRET`.
-
 Current Cloudflare status:
 
-- `igrec-inbound-email` Worker is staged in the account.
+- `igrec.net` is an active Cloudflare zone: `c38b6182b674cdc3e15264c04927f81a`.
+- `igrec.net` and `www.igrec.net` point to the Oracle host through proxied Cloudflare DNS.
+- Email Routing is enabled and ready.
+- Catch-all inbound mail routes to the `igrec-inbound-email` Worker.
 - Worker secrets are configured for the Oracle callback.
-- `igrec.net` must still be added as a Cloudflare zone before DNS and Email Routing rules can be created.
 
 ## Oracle deployment
 
