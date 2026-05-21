@@ -27,6 +27,15 @@ Users sign in by magic link through `/login`; no passwords are stored. `/write` 
 
 Transactional email uses `Y` as the sender name with sigil addresses intentionally: magic-link login comes from `!@igrec.net`, and daily nudges come from `_@igrec.net`.
 
+Send daily nudges with:
+
+```sh
+go run ./cmd/igrec send-daily-email
+```
+
+Production runs this through `igrec-daily-email.timer` at 08:20 Europe/Paris.
+During beta, the nudge uses the newest word from someone else; once local follow relationships exist, the same job should narrow that source to followed accounts.
+
 ## Implemented foundation
 
 - Public firehose at `/`
@@ -36,6 +45,8 @@ Transactional email uses `Y` as the sender name with sigil addresses intentional
 - Invite-only user registration at `/join`
 - Magic-link login at `/login`
 - Server-side one-word validation with Unicode support
+- Daily email opt-in in settings
+- Daily email nudge command and production timer
 - SQLite schema for users, invites, sessions, login tokens, posts, follows
 - ActivityPub actor, WebFinger, and outbox JSON
 - Resend plain-text email helper

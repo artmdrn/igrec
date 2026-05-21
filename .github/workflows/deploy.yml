@@ -57,6 +57,11 @@ jobs:
           sudo mv /tmp/igrec-bin /opt/igrec/bin/igrec
           sudo chown -R igrec:igrec /opt/igrec
           sudo chmod 755 /opt/igrec/bin/igrec
+          sudo cp deploy/systemd/igrec.service /etc/systemd/system/igrec.service
+          sudo cp deploy/systemd/igrec-daily-email.service /etc/systemd/system/igrec-daily-email.service
+          sudo cp deploy/systemd/igrec-daily-email.timer /etc/systemd/system/igrec-daily-email.timer
+          sudo systemctl daemon-reload
+          sudo systemctl enable --now igrec-daily-email.timer
           sudo systemctl restart igrec
           systemctl is-active igrec
           curl -fsS -H 'Host: igrec.net' http://127.0.0.1/ >/dev/null

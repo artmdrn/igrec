@@ -157,7 +157,7 @@ func (a *App) settings(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		a.render(w, "settings.html", map[string]any{"User": user, "VAPIDPublic": a.cfg.VAPIDPublic})
 	case http.MethodPost:
-		if err := a.db.UpdateTimestampPreference(user.ID, r.FormValue("timestamp_preference")); err != nil {
+		if err := a.db.UpdateSettings(user.ID, r.FormValue("timestamp_preference"), r.FormValue("daily") == "on"); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}

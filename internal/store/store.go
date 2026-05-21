@@ -42,6 +42,11 @@ type Invite struct {
 	UsedAt    sql.NullTime
 }
 
+type DailyEmailCandidate struct {
+	User User
+	Post sql.Null[Post]
+}
+
 func Open(databaseURL string) (*DB, error) {
 	driver, dsn, err := parseDatabaseURL(databaseURL)
 	if err != nil {
@@ -119,6 +124,12 @@ create table if not exists follows (
   inbox_url text not null,
   created_at datetime not null default current_timestamp,
   unique(follower_actor, user_id)
+);
+create table if not exists daily_email_sends (
+  user_id integer not null references users(id),
+  sent_on text not null,
+  sent_at datetime not null default current_timestamp,
+  primary key(user_id, sent_on)
 );
 `
 	if _, err := db.Exec(schema); err != nil {
@@ -283,6 +294,86 @@ where login_tokens.token_hash = ? and login_tokens.used_at is null and login_tok
 
 func (db *DB) UpdateTimestampPreference(userID int64, preference string) error {
 	_, err := db.Exec(`update users set timestamp_preference = ? where id = ?`, normalizeTimestampPreference(preference), userID)
+	return err
+}
+
+func (db *DB) UpdateSettings(userID int64, preference string, emailOptIn bool) error {
+	optIn := 0
+	if emailOptIn {
+		optIn = 1
+	}
+	_, err := db.Exec(`update users set timestamp_preference = ?, email_opt_in = ? where id = ?`, normalizeTimestampPreference(preference), optIn, userID)
+	return err
+}
+
+func (db *DB) DailyEmailCandidates(sentOn string, limit int) ([]DailyEmailCandidate, error) {
+	rows, err := db.Query(`
+select users.id, users.username, users.domain, users.email, users.fediverse_acct, users.email_opt_in, users.timestamp_preference, users.migration_target, users.created_at,
+       posts.id, posts.user_id, post_users.username, posts.word, posts.image_url, posts.created_at
+from users
+left join daily_email_sends on daily_email_sends.user_id = users.id and daily_email_sends.sent_on = ?
+left join posts on posts.id = (
+  select posts.id
+  from posts
+  where posts.user_id != users.id
+  order by posts.created_at desc, posts.id desc
+  limit 1
+)
+left join users post_users on post_users.id = posts.user_id
+where users.email_opt_in = 1
+  and users.email != ''
+  and daily_email_sends.user_id is null
+order by users.id asc
+limit ?`, sentOn, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var candidates []DailyEmailCandidate
+	for rows.Next() {
+		var candidate DailyEmailCandidate
+		var post Post
+		var postID, postUserID sql.NullInt64
+		var postUsername, postWord sql.NullString
+		var imageURL sql.NullString
+		var postCreatedAt sql.NullTime
+		if err := rows.Scan(
+			&candidate.User.ID,
+			&candidate.User.Username,
+			&candidate.User.Domain,
+			&candidate.User.Email,
+			&candidate.User.FediverseAcct,
+			&candidate.User.EmailOptIn,
+			&candidate.User.TimestampPreference,
+			&candidate.User.MigrationTarget,
+			&candidate.User.CreatedAt,
+			&postID,
+			&postUserID,
+			&postUsername,
+			&postWord,
+			&imageURL,
+			&postCreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		candidate.User.TimestampPreference = normalizeTimestampPreference(candidate.User.TimestampPreference)
+		if postID.Valid && postUserID.Valid && postUsername.Valid && postWord.Valid && postCreatedAt.Valid {
+			post.ID = postID.Int64
+			post.UserID = postUserID.Int64
+			post.Username = postUsername.String
+			post.Word = postWord.String
+			post.ImageURL = imageURL
+			post.CreatedAt = postCreatedAt.Time
+			candidate.Post = sql.Null[Post]{V: post, Valid: true}
+		}
+		candidates = append(candidates, candidate)
+	}
+	return candidates, rows.Err()
+}
+
+func (db *DB) MarkDailyEmailSent(userID int64, sentOn string) error {
+	_, err := db.Exec(`insert or ignore into daily_email_sends(user_id, sent_on) values(?, ?)`, userID, sentOn)
 	return err
 }
 

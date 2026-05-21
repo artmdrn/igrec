@@ -39,6 +39,20 @@ func main() {
 		log.Fatal(err)
 	}
 
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "send-daily-email":
+			sent, err := sendDailyEmails(cfg, db)
+			if err != nil {
+				log.Fatal(err)
+			}
+			log.Printf("daily email sent to %d users", sent)
+			return
+		default:
+			log.Fatalf("unknown command %q", os.Args[1])
+		}
+	}
+
 	srv := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           app.New(cfg, db),

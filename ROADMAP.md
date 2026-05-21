@@ -40,9 +40,9 @@ Done when:
 - Harden one-word validation across web, email, and future federation entry points.
 - Add duplicate-word-per-user support as intentional post moments.
 - Add optional image upload with a conservative size/type policy.
-- Build the daily email job: one word from someone followed, plus the plain-text prompt.
-- Send daily nudges from `_@igrec.net`; keep magic-link login on `!@igrec.net`.
-- Add email preference settings.
+- [beta] Build the daily email job: one word from someone else, plus the plain-text prompt. Narrow to followed accounts after local follows exist.
+- [done] Send daily nudges from `_@igrec.net`; keep magic-link login on `!@igrec.net`.
+- [done] Add email preference settings.
 
 Done when:
 

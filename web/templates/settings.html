@@ -2,7 +2,7 @@
 <main class="settings">
   <form method="post" action="/settings">
     <label>email <input type="email" name="email" value="{{.User.Email}}" disabled></label>
-    <label><input type="checkbox" name="daily"> daily word</label>
+    <label><input type="checkbox" name="daily" {{if .User.EmailOptIn}}checked{{end}}> daily word</label>
     <label>fediverse <input name="fediverse" placeholder="@you@example.social"></label>
     <label>timestamps
       <select name="timestamp_preference">

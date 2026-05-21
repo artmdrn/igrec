@@ -1,0 +1,16 @@
+[Unit]
+Description=igrec daily email nudge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=igrec
+Group=igrec
+WorkingDirectory=/opt/igrec/src
+EnvironmentFile=/opt/igrec/.env
+ExecStart=/opt/igrec/bin/igrec send-daily-email
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/igrec/data
