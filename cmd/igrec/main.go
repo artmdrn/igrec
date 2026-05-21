@@ -17,7 +17,14 @@ func main() {
 		DatabaseURL:  env("DATABASE_URL", "sqlite://igrec.db"),
 		AppSecret:    os.Getenv("APP_SECRET"),
 		ResendAPIKey: os.Getenv("RESEND_API_KEY"),
-		EmailFrom:    env("EMAIL_FROM", "igrec <hello@igrec.net>"),
+		LoginEmailFrom: envFallback(
+			[]string{"LOGIN_EMAIL_FROM", "EMAIL_FROM"},
+			"igrec <!@igrec.net>",
+		),
+		DailyEmailFrom: envFallback(
+			[]string{"DAILY_EMAIL_FROM", "EMAIL_FROM"},
+			"igrec <_@igrec.net>",
+		),
 		VAPIDPublic:  os.Getenv("VAPID_PUBLIC_KEY"),
 		VAPIDPrivate: os.Getenv("VAPID_PRIVATE_KEY"),
 	}
@@ -45,6 +52,15 @@ func main() {
 func env(key, fallback string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
+	}
+	return fallback
+}
+
+func envFallback(keys []string, fallback string) string {
+	for _, key := range keys {
+		if value := os.Getenv(key); value != "" {
+			return value
+		}
 	}
 	return fallback
 }

@@ -38,6 +38,7 @@ Done when:
 - Add duplicate-word-per-user support as intentional post moments.
 - Add optional image upload with a conservative size/type policy.
 - Build the daily email job: one word from someone followed, plus the plain-text prompt.
+- Send daily nudges from `_@igrec.net`; keep magic-link login on `!@igrec.net`.
 - Add email preference settings.
 
 Done when:

@@ -25,6 +25,8 @@ Registration is invite-only. During beta, operators can create one invite at `/a
 
 Users sign in by magic link through `/login`; no passwords are stored. `/write` and `/settings` require a session.
 
+Transactional email uses the sigil addresses intentionally: magic-link login comes from `!@igrec.net`, and daily nudges come from `_@igrec.net`.
+
 ## Implemented foundation
 
 - Public firehose at `/`

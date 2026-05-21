@@ -23,14 +23,15 @@ import (
 )
 
 type Config struct {
-	BaseURL      string
-	Addr         string
-	DatabaseURL  string
-	AppSecret    string
-	ResendAPIKey string
-	EmailFrom    string
-	VAPIDPublic  string
-	VAPIDPrivate string
+	BaseURL        string
+	Addr           string
+	DatabaseURL    string
+	AppSecret      string
+	ResendAPIKey   string
+	LoginEmailFrom string
+	DailyEmailFrom string
+	VAPIDPublic    string
+	VAPIDPrivate   string
 }
 
 type App struct {
@@ -229,7 +230,7 @@ func (a *App) login(w http.ResponseWriter, r *http.Request) {
 		}
 		link := strings.TrimRight(a.cfg.BaseURL, "/") + "/auth/magic?token=" + url.QueryEscape(token) + "&next=" + url.QueryEscape(next)
 		body := "sign in to igrec:\n\n" + link + "\n\nthis link expires in 20 minutes.\n"
-		err = (emailpkg.Resend{APIKey: a.cfg.ResendAPIKey, From: a.cfg.EmailFrom}).SendPlain(user.Email, "igrec sign in", body)
+		err = (emailpkg.Resend{APIKey: a.cfg.ResendAPIKey, From: a.cfg.LoginEmailFrom}).SendPlain(user.Email, "igrec sign in", body)
 		if err != nil {
 			a.render(w, "login.html", map[string]any{"Error": err.Error(), "Email": email, "Next": next})
 			return
