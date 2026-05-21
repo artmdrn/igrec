@@ -12,6 +12,7 @@ type Resend struct {
 	APIKey  string
 	From    string
 	ReplyTo string
+	Headers map[string]string
 }
 
 func (r Resend) SendPlain(to, subject, body string) error {
@@ -27,6 +28,13 @@ func (r Resend) SendPlain(to, subject, body string) error {
 		"subject": subject,
 		"text":    body,
 	}
+	headers := map[string]string{
+		"BIMI-Selector": "v=BIMI1; s=default;",
+	}
+	for key, value := range r.Headers {
+		headers[key] = value
+	}
+	payload["headers"] = headers
 	if r.ReplyTo != "" {
 		payload["reply_to"] = r.ReplyTo
 	}

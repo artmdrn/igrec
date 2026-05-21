@@ -79,7 +79,7 @@ Current Cloudflare status:
 - Email Routing is enabled and ready.
 - Catch-all inbound mail routes to the `igrec-inbound-email` Worker.
 - Worker secrets are configured for the Oracle callback.
-- BIMI discovery points mail clients at `/static/bimi.svg` for the Y sender mark.
+- BIMI discovery points mail clients at `/static/bimi-20260521.svg` for the Y sender mark, and outgoing mail includes a `BIMI-Selector` header.
 
 ## Oracle deployment
 
