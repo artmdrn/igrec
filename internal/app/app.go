@@ -386,8 +386,8 @@ func (a *App) manifest(w http.ResponseWriter, r *http.Request) {
 		"background_color": "#f7f0df",
 		"theme_color":      "#111111",
 		"icons": []any{
-			map[string]string{"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png"},
-			map[string]string{"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png"},
+			map[string]string{"src": "/static/icon-192.png?v=20260521-french", "sizes": "192x192", "type": "image/png"},
+			map[string]string{"src": "/static/icon-512.png?v=20260521-french", "sizes": "512x512", "type": "image/png"},
 		},
 	})
 }
