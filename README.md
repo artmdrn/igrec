@@ -73,3 +73,15 @@ Current Cloudflare status:
 ## Oracle deployment
 
 The Oracle host is `79.72.31.189` (`codex-standby-vnic`). It runs igrec from `/opt/igrec` as `igrec.service`, bound to `127.0.0.1:8097` behind nginx. The matching service and nginx files live in `deploy/systemd/igrec.service` and `deploy/nginx/igrec.net`.
+
+## CI/CD
+
+GitHub Actions runs `gofmt`, `go test ./...`, and `go build ./cmd/igrec` on every pull request and push to `main`.
+
+Deployments run after CI passes on `main`, or manually from the Deploy workflow. Required GitHub repository secrets:
+
+- `ORACLE_HOST`: `79.72.31.189`
+- `ORACLE_USER`: `ubuntu`
+- `ORACLE_SSH_KEY`: private SSH key with access to the Oracle host
+
+The deploy workflow uploads the source, builds on Oracle, restarts `igrec.service`, and smoke-tests nginx locally with `Host: igrec.net`.

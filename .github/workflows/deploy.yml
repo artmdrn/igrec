@@ -1,0 +1,70 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+    branches:
+      - main
+    types:
+      - completed
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Oracle
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install SSH key
+        env:
+          ORACLE_SSH_KEY: ${{ secrets.ORACLE_SSH_KEY }}
+          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
+        run: |
+          test -n "$ORACLE_SSH_KEY"
+          test -n "$ORACLE_HOST"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$ORACLE_SSH_KEY" > ~/.ssh/oracle
+          chmod 600 ~/.ssh/oracle
+          ssh-keyscan -H "$ORACLE_HOST" >> ~/.ssh/known_hosts
+
+      - name: Upload source
+        env:
+          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
+          ORACLE_USER: ${{ secrets.ORACLE_USER }}
+        run: |
+          tar --exclude='.git' --exclude='data' --exclude='*.db' -czf /tmp/igrec-deploy.tgz .
+          scp -i ~/.ssh/oracle /tmp/igrec-deploy.tgz "${ORACLE_USER:-ubuntu}@${ORACLE_HOST}:/tmp/igrec-deploy.tgz"
+
+      - name: Build and restart service
+        env:
+          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
+          ORACLE_USER: ${{ secrets.ORACLE_USER }}
+        run: |
+          ssh -i ~/.ssh/oracle "${ORACLE_USER:-ubuntu}@${ORACLE_HOST}" <<'REMOTE'
+          set -euo pipefail
+          sudo mkdir -p /opt/igrec/src /opt/igrec/bin /opt/igrec/data
+          sudo find /opt/igrec/src -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+          sudo tar -xzf /tmp/igrec-deploy.tgz -C /opt/igrec/src
+          sudo chown -R "$USER:$USER" /opt/igrec/src
+          cd /opt/igrec/src
+          go test ./...
+          CGO_ENABLED=1 go build -o /tmp/igrec-bin ./cmd/igrec
+          sudo mv /tmp/igrec-bin /opt/igrec/bin/igrec
+          sudo chown -R igrec:igrec /opt/igrec
+          sudo chmod 755 /opt/igrec/bin/igrec
+          sudo systemctl restart igrec
+          systemctl is-active igrec
+          curl -fsS -H 'Host: igrec.net' http://127.0.0.1/ >/dev/null
+          REMOTE
