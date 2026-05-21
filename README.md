@@ -64,6 +64,12 @@ export RESEND_DKIM_VALUE=...
 
 Email Routing still needs to be enabled for the zone in Cloudflare before inbound routes can run. Attach `cloudflare/email-worker.js` to the inbound route and set Worker secrets `IGREC_INBOUND_URL=https://igrec.net/inbound/email` and `APP_SECRET`.
 
+Current Cloudflare status:
+
+- `igrec-inbound-email` Worker is staged in the account.
+- Worker secrets are configured for the Oracle callback.
+- `igrec.net` must still be added as a Cloudflare zone before DNS and Email Routing rules can be created.
+
 ## Oracle deployment
 
 The Oracle host is `79.72.31.189` (`codex-standby-vnic`). It runs igrec from `/opt/igrec` as `igrec.service`, bound to `127.0.0.1:8097` behind nginx. The matching service and nginx files live in `deploy/systemd/igrec.service` and `deploy/nginx/igrec.net`.
