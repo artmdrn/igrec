@@ -214,23 +214,25 @@ func (a *App) login(w http.ResponseWriter, r *http.Request) {
 		email := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
 		next := safeNext(r.FormValue("next"))
 		user, err := a.db.UserByEmail(email)
-		if err == nil {
-			token, tokenHash, err := newToken()
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			if err := a.db.CreateLoginToken(tokenHash, user.ID, time.Now().Add(20*time.Minute)); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			link := strings.TrimRight(a.cfg.BaseURL, "/") + "/auth/magic?token=" + url.QueryEscape(token) + "&next=" + url.QueryEscape(next)
-			body := "sign in to igrec:\n\n" + link + "\n\nthis link expires in 20 minutes.\n"
-			err = (emailpkg.Resend{APIKey: a.cfg.ResendAPIKey, From: a.cfg.EmailFrom}).SendPlain(user.Email, "igrec sign in", body)
-			if err != nil {
-				a.render(w, "login.html", map[string]any{"Error": err.Error(), "Email": email, "Next": next})
-				return
-			}
+		if err != nil {
+			a.render(w, "login.html", map[string]any{"Error": "no account uses that email yet", "Email": email, "Next": next})
+			return
+		}
+		token, tokenHash, err := newToken()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if err := a.db.CreateLoginToken(tokenHash, user.ID, time.Now().Add(20*time.Minute)); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		link := strings.TrimRight(a.cfg.BaseURL, "/") + "/auth/magic?token=" + url.QueryEscape(token) + "&next=" + url.QueryEscape(next)
+		body := "sign in to igrec:\n\n" + link + "\n\nthis link expires in 20 minutes.\n"
+		err = (emailpkg.Resend{APIKey: a.cfg.ResendAPIKey, From: a.cfg.EmailFrom}).SendPlain(user.Email, "igrec sign in", body)
+		if err != nil {
+			a.render(w, "login.html", map[string]any{"Error": err.Error(), "Email": email, "Next": next})
+			return
 		}
 		a.render(w, "login_sent.html", map[string]any{"Email": email})
 	default:
@@ -382,7 +384,10 @@ func (a *App) manifest(w http.ResponseWriter, r *http.Request) {
 		"display":          "standalone",
 		"background_color": "#f7f0df",
 		"theme_color":      "#111111",
-		"icons":            []any{},
+		"icons": []any{
+			map[string]string{"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png"},
+			map[string]string{"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png"},
+		},
 	})
 }
 
