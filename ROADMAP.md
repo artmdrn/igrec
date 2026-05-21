@@ -1,0 +1,122 @@
+# igrec Roadmap
+
+This roadmap is ordered so each step leaves the service more real without turning the codebase into a half-built maze. Keep tasks small, shipable, and easy to verify on Oracle.
+
+## Phase 0: Stabilize The Deployed Skeleton
+
+- Replace demo-only posting with a real current-user boundary, even before full auth.
+- Add structured config validation on boot for production-required variables.
+- Add a health endpoint for uptime checks.
+- Add basic request logging and error logs that do not leak secrets.
+- Add a deployment checklist for Oracle, Cloudflare, Resend, and GitHub.
+
+Done when:
+
+- `igrec.service` starts only with valid production config.
+- `/healthz` returns `200`.
+- A fresh deploy can be verified with one documented command sequence.
+
+## Phase 1: Invite-Only Accounts And Magic Links
+
+- Add invite creation and redemption.
+- Add users with stable usernames, emails, and session cookies.
+- Add magic-link login through Resend.
+- Make `/write` require login.
+- Make inbound email posting map to a real opted-in user.
+
+Done when:
+
+- A new account can be created only with an invite.
+- A user can log in without a password.
+- Posts are attributed to the logged-in user, not `demo`.
+
+## Phase 2: The One-Word Product Loop
+
+- Harden one-word validation across web, email, and future federation entry points.
+- Add duplicate-word-per-user support as intentional post moments.
+- Add optional image upload with a conservative size/type policy.
+- Build the daily email job: one word from someone followed, plus the plain-text prompt.
+- Add email preference settings.
+
+Done when:
+
+- The core loop works: receive prompt, reply with one word, see it posted.
+- Users can opt in/out of daily emails.
+- Images can be attached safely.
+
+## Phase 3: ActivityPub Basics
+
+- Add actor key generation and HTTP signatures.
+- Implement inbox handling for Follow, Undo Follow, Accept, Reject, and Move.
+- Store followers and follower inboxes.
+- Deliver Create/Note activities to follower inboxes.
+- Improve WebFinger, actor, outbox, and object URLs for compatibility.
+
+Deferred:
+
+- Likes, replies, boosts, quote-posts, and public follower counts.
+
+Done when:
+
+- A Mastodon account can follow an igrec user.
+- New words appear in that Mastodon home timeline.
+- Account Move can redirect followers to another ActivityPub actor.
+
+## Phase 4: IndieAuth And Mastodon OAuth
+
+- Add IndieAuth login for users who own a domain.
+- Add Mastodon OAuth login for existing fediverse users.
+- Link multiple auth identities to one igrec account.
+- Add rel=me verification links on profiles.
+
+Done when:
+
+- Existing fediverse users can sign in without email.
+- Domain owners can sign in with IndieAuth.
+- Profiles expose rel=me links cleanly.
+
+## Phase 5: Portability And Settings
+
+- Add one-click JSON export.
+- Add ActivityPub-flavored export.
+- Add account migration UI.
+- Add delete-account flow with confirmation.
+- Add settings for fediverse handle, rel=me links, email preferences, export, migration, and deletion.
+
+Done when:
+
+- Users can leave with their data.
+- Migration and deletion do not require operator intervention.
+
+## Phase 6: PWA And Notifications
+
+- Add service worker and install metadata.
+- Add VAPID key validation.
+- Add push subscription storage.
+- Send Web Push notifications for daily prompt and relevant account events.
+- Make notification taps open `/write` with the input focused.
+
+Done when:
+
+- Installed PWA opens straight to the writing flow from a notification.
+- The public feed remains browsable without JavaScript.
+
+## Phase 7: Production Hardening
+
+- Add HTTPS origin certificate on Oracle.
+- Rotate all keys that appeared in chat.
+- Add backups for SQLite.
+- Add restore drill documentation.
+- Add rate limits for posting, inbound email, auth, and ActivityPub inbox.
+- Add basic moderation/operator controls for invite revocation and account suspension.
+- Add CI on GitHub.
+
+Done when:
+
+- A server loss can be recovered from backup.
+- Abuse controls exist before wider invites.
+- CI runs tests on every push.
+
+## Suggested Next Task
+
+Implement Phase 1 magic-link auth and invite-only registration. This removes the `demo` user placeholder and makes the deployed app usable by real people.
