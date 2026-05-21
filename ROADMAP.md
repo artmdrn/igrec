@@ -127,16 +127,23 @@ Implement Phase 1 magic-link auth and invite-only registration. This removes the
 
 These are deliberately parked until the beta loop is stable. They should not be picked before the Phase 0-7 work unless explicitly requested.
 
-### Public Read API
+### Public API
 
-- Add a read-only public REST API.
+- Add a public REST API for reading and authenticated client posting.
 - `GET /api/@username/words` returns a user's full word archive as JSON.
-- Use the same internal representation to power email and PWA features.
+- `POST /api/words` creates a new word for the authenticated user.
+- Enforce the same one-word validation server-side as web, email, and ActivityPub.
+- Support optional image attachment or image URL according to the production upload policy.
+- Use scoped API tokens so people can build their own clients without sharing login sessions.
+- Use the same internal representation to power email, PWA, and first-party UI features.
 
 Done when:
 
 - Public archives are available as stable JSON without authentication.
 - API output includes enough metadata for clients to render dates according to user preference.
+- Users can create and revoke API tokens.
+- Third-party clients can post words without browser cookies.
+- API writes behave identically to web writes for validation, timestamps, and attribution.
 
 ### On This Day
 
