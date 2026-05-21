@@ -15,14 +15,15 @@ type DB struct {
 }
 
 type User struct {
-	ID             int64
-	Username       string
-	Domain         string
-	Email          string
-	FediverseAcct  string
-	EmailOptIn     bool
-	CreatedAt      time.Time
-	MigrationTarget string
+	ID                  int64
+	Username            string
+	Domain              string
+	Email               string
+	FediverseAcct       string
+	EmailOptIn          bool
+	TimestampPreference string
+	CreatedAt           time.Time
+	MigrationTarget     string
 }
 
 type Post struct {
@@ -69,6 +70,7 @@ create table if not exists users (
   email text not null default '',
   fediverse_acct text not null default '',
   email_opt_in integer not null default 0,
+  timestamp_preference text not null default 'smart',
   migration_target text not null default '',
   created_at datetime not null default current_timestamp
 );
@@ -96,15 +98,45 @@ create table if not exists follows (
   unique(follower_actor, user_id)
 );
 `
-	_, err := db.Exec(schema)
+	if _, err := db.Exec(schema); err != nil {
+		return err
+	}
+	return db.ensureColumn("users", "timestamp_preference", "text not null default 'smart'")
+}
+
+func (db *DB) ensureColumn(table, column, definition string) error {
+	rows, err := db.Query(`pragma table_info(` + table + `)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull int
+		var defaultValue any
+		var pk int
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &pk); err != nil {
+			return err
+		}
+		if name == column {
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	_, err = db.Exec(fmt.Sprintf(`alter table %s add column %s %s`, table, column, definition))
 	return err
 }
 
 func (db *DB) EnsureLocalUser(username string) (User, error) {
 	var user User
-	err := db.QueryRow(`select id, username, domain, email, fediverse_acct, email_opt_in, migration_target, created_at from users where username = ?`, username).
-		Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.MigrationTarget, &user.CreatedAt)
+	err := db.QueryRow(`select id, username, domain, email, fediverse_acct, email_opt_in, timestamp_preference, migration_target, created_at from users where username = ?`, username).
+		Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt)
 	if err == nil {
+		user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
 		return user, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
@@ -116,15 +148,22 @@ func (db *DB) EnsureLocalUser(username string) (User, error) {
 	}
 	user.ID, _ = res.LastInsertId()
 	user.Username = username
+	user.TimestampPreference = "smart"
 	user.CreatedAt = time.Now().UTC()
 	return user, nil
 }
 
 func (db *DB) UserByUsername(username string) (User, error) {
 	var user User
-	err := db.QueryRow(`select id, username, domain, email, fediverse_acct, email_opt_in, migration_target, created_at from users where username = ?`, username).
-		Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.MigrationTarget, &user.CreatedAt)
+	err := db.QueryRow(`select id, username, domain, email, fediverse_acct, email_opt_in, timestamp_preference, migration_target, created_at from users where username = ?`, username).
+		Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt)
+	user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
 	return user, err
+}
+
+func (db *DB) UpdateTimestampPreference(userID int64, preference string) error {
+	_, err := db.Exec(`update users set timestamp_preference = ? where id = ?`, normalizeTimestampPreference(preference), userID)
+	return err
 }
 
 func (db *DB) CreatePost(userID int64, value string, imageURL *string) (Post, error) {
@@ -138,6 +177,15 @@ func (db *DB) CreatePost(userID int64, value string, imageURL *string) (Post, er
 	}
 	id, _ := res.LastInsertId()
 	return db.PostByID(id)
+}
+
+func normalizeTimestampPreference(preference string) string {
+	switch preference {
+	case "date", "datetime", "smart":
+		return preference
+	default:
+		return "smart"
+	}
 }
 
 func (db *DB) PostByID(id int64) (Post, error) {

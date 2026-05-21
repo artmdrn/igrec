@@ -142,6 +142,7 @@ h1 {
 }
 
 input,
+select,
 button {
   width: 100%;
   border: 3px solid var(--ink);
@@ -151,7 +152,8 @@ button {
   font: inherit;
 }
 
-input {
+input,
+select {
   padding: .8rem;
 }
 

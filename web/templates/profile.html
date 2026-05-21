@@ -8,7 +8,7 @@
     {{range .Posts}}
       <a class="tile" href="/@{{.Username}}/{{.Word}}">
         <span>{{.Word}}</span>
-        <time>{{.CreatedAt.Format "Jan 02"}}</time>
+        <time datetime="{{.MachineTime}}">{{.DisplayTime}}</time>
       </a>
     {{else}}
       <p class="empty">_</p>

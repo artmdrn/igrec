@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"igrec.net/igrec/internal/activitypub"
 	"igrec.net/igrec/internal/store"
@@ -30,10 +31,16 @@ type App struct {
 	templates *template.Template
 }
 
+type postView struct {
+	store.Post
+	DisplayTime string
+	MachineTime string
+}
+
 func New(cfg Config, db *store.DB) http.Handler {
 	app := &App{
-		cfg: cfg,
-		db:  db,
+		cfg:       cfg,
+		db:        db,
 		templates: template.Must(template.ParseGlob("web/templates/*.html")),
 	}
 
@@ -87,7 +94,7 @@ func (a *App) profile(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	a.render(w, "profile.html", map[string]any{"User": user, "Posts": posts})
+	a.render(w, "profile.html", map[string]any{"User": user, "Posts": profilePostViews(posts, user.TimestampPreference)})
 }
 
 func (a *App) write(w http.ResponseWriter, r *http.Request) {
@@ -122,7 +129,24 @@ func (a *App) write(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) settings(w http.ResponseWriter, r *http.Request) {
-	a.render(w, "settings.html", map[string]any{"VAPIDPublic": a.cfg.VAPIDPublic})
+	user, err := a.db.EnsureLocalUser("demo")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		a.render(w, "settings.html", map[string]any{"User": user, "VAPIDPublic": a.cfg.VAPIDPublic})
+	case http.MethodPost:
+		if err := a.db.UpdateTimestampPreference(user.ID, r.FormValue("timestamp_preference")); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		http.Redirect(w, r, "/settings", http.StatusSeeOther)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
 }
 
 func (a *App) inboundEmail(w http.ResponseWriter, r *http.Request) {
@@ -234,4 +258,39 @@ func (a *App) render(w http.ResponseWriter, name string, data any) {
 func writeJSON(w http.ResponseWriter, contentType string, data any) {
 	w.Header().Set("Content-Type", contentType)
 	_ = json.NewEncoder(w).Encode(data)
+}
+
+func profilePostViews(posts []store.Post, preference string) []postView {
+	counts := make(map[string]int)
+	for _, post := range posts {
+		counts[dayKey(post.CreatedAt)]++
+	}
+
+	views := make([]postView, 0, len(posts))
+	for _, post := range posts {
+		views = append(views, postView{
+			Post:        post,
+			DisplayTime: displayTime(post.CreatedAt, preference, counts[dayKey(post.CreatedAt)]),
+			MachineTime: post.CreatedAt.Format(time.RFC3339),
+		})
+	}
+	return views
+}
+
+func dayKey(t time.Time) string {
+	return t.Format("2006-01-02")
+}
+
+func displayTime(t time.Time, preference string, postsOnDay int) string {
+	switch preference {
+	case "date":
+		return t.Format("Jan 02")
+	case "datetime":
+		return t.Format("Jan 02 15:04")
+	default:
+		if postsOnDay > 1 {
+			return t.Format("Jan 02 15:04")
+		}
+		return t.Format("Jan 02")
+	}
 }
