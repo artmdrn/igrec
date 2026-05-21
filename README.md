@@ -25,7 +25,7 @@ Registration is invite-only. During beta, operators can create one invite at `/a
 
 Users sign in by magic link through `/login`; no passwords are stored. `/write` and `/settings` require a session.
 
-Transactional email uses `Y` as the sender name with sigil addresses intentionally: magic-link login comes from `!@igrec.net`, and daily nudges come from `_@igrec.net`. Daily replies use tagged addresses like `_+username@igrec.net` so a reply still maps to the right account if the sender address is rewritten.
+Email is an attachable contact method, not the root account. Logged-in users can add or change it from `/settings` by confirming a link. Transactional email uses `Y` as the sender name with sigil addresses intentionally: magic-link login comes from `!@igrec.net`, and daily nudges come from `_@igrec.net`. Daily replies use tagged addresses like `_+username@igrec.net` so a reply still maps to the right account if the sender address is rewritten.
 
 Send daily nudges with:
 

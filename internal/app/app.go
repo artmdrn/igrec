@@ -64,6 +64,7 @@ func New(cfg Config, db *store.DB) http.Handler {
 	mux.HandleFunc("/login", app.login)
 	mux.HandleFunc("/logout", app.logout)
 	mux.HandleFunc("/auth/magic", app.magic)
+	mux.HandleFunc("/auth/email", app.confirmEmail)
 	mux.HandleFunc("/write", app.write)
 	mux.HandleFunc("/settings", app.settings)
 	mux.HandleFunc("/admin/invites", app.adminInvites)
@@ -157,8 +158,38 @@ func (a *App) settings(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		a.render(w, "settings.html", map[string]any{"User": user, "VAPIDPublic": a.cfg.VAPIDPublic})
 	case http.MethodPost:
+		emailNotice := ""
+		email := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
+		if email != "" && !strings.EqualFold(email, user.Email) {
+			if _, err := mail.ParseAddress(email); err != nil {
+				a.render(w, "settings.html", map[string]any{"User": user, "VAPIDPublic": a.cfg.VAPIDPublic, "Error": "email is not valid"})
+				return
+			}
+			token, tokenHash, err := newToken()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if err := a.db.CreateEmailChangeToken(tokenHash, user.ID, email, time.Now().Add(30*time.Minute)); err != nil {
+				a.render(w, "settings.html", map[string]any{"User": user, "VAPIDPublic": a.cfg.VAPIDPublic, "Error": "email is already used"})
+				return
+			}
+			link := strings.TrimRight(a.cfg.BaseURL, "/") + "/auth/email?token=" + url.QueryEscape(token)
+			body := "confirm this email for igrec:\n\n" + link + "\n\nthis link expires in 30 minutes.\n"
+			err = (emailpkg.Resend{APIKey: a.cfg.ResendAPIKey, From: a.cfg.LoginEmailFrom}).SendPlain(email, "confirm igrec email", body)
+			if err != nil {
+				a.render(w, "settings.html", map[string]any{"User": user, "VAPIDPublic": a.cfg.VAPIDPublic, "Error": err.Error()})
+				return
+			}
+			emailNotice = "check email to confirm"
+		}
 		if err := a.db.UpdateSettings(user.ID, r.FormValue("timestamp_preference"), r.FormValue("daily") == "on"); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if emailNotice != "" {
+			user, _ = a.db.UserByUsername(user.Username)
+			a.render(w, "settings.html", map[string]any{"User": user, "VAPIDPublic": a.cfg.VAPIDPublic, "Notice": emailNotice})
 			return
 		}
 		http.Redirect(w, r, "/settings", http.StatusSeeOther)
@@ -257,6 +288,26 @@ func (a *App) magic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, safeNext(r.URL.Query().Get("next")), http.StatusSeeOther)
+}
+
+func (a *App) confirmEmail(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		http.NotFound(w, r)
+		return
+	}
+	user, err := a.db.UseEmailChangeToken(hashToken(token))
+	if err != nil {
+		a.render(w, "settings.html", map[string]any{"User": user, "Error": "email link is invalid or expired"})
+		return
+	}
+	if _, ok := a.currentUser(r); !ok {
+		if err := a.startSession(w, user.ID); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+	http.Redirect(w, r, "/settings", http.StatusSeeOther)
 }
 
 func (a *App) logout(w http.ResponseWriter, r *http.Request) {

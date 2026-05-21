@@ -1,7 +1,9 @@
 {{template "head" .}}
 <main class="settings">
   <form method="post" action="/settings">
-    <label>email <input type="email" name="email" value="{{.User.Email}}" disabled></label>
+    {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+    {{if .Notice}}<p class="notice">{{.Notice}}</p>{{end}}
+    <label>email <input type="email" name="email" value="{{.User.Email}}" autocomplete="email"></label>
     <label><input type="checkbox" name="daily" {{if .User.EmailOptIn}}checked{{end}}> daily word</label>
     <label>fediverse <input name="fediverse" placeholder="@you@example.social"></label>
     <label>timestamps

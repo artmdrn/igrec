@@ -105,6 +105,14 @@ create table if not exists login_tokens (
   expires_at datetime not null,
   used_at datetime
 );
+create table if not exists email_change_tokens (
+  token_hash text primary key,
+  user_id integer not null references users(id),
+  email text not null,
+  created_at datetime not null default current_timestamp,
+  expires_at datetime not null,
+  used_at datetime
+);
 create table if not exists posts (
   id integer primary key autoincrement,
   user_id integer not null references users(id),
@@ -117,6 +125,7 @@ create index if not exists posts_user_word_idx on posts(user_id, word);
 create unique index if not exists users_email_unique_idx on users(email) where email != '';
 create index if not exists sessions_user_idx on sessions(user_id);
 create index if not exists login_tokens_user_idx on login_tokens(user_id);
+create index if not exists email_change_tokens_user_idx on email_change_tokens(user_id);
 create table if not exists follows (
   id integer primary key autoincrement,
   follower_actor text not null,
@@ -290,6 +299,45 @@ where login_tokens.token_hash = ? and login_tokens.used_at is null and login_tok
 	}
 	user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
 	return user, nil
+}
+
+func (db *DB) CreateEmailChangeToken(tokenHash string, userID int64, email string, expiresAt time.Time) error {
+	_, err := db.Exec(`insert into email_change_tokens(token_hash, user_id, email, expires_at) values(?, ?, ?, ?)`, tokenHash, userID, strings.ToLower(strings.TrimSpace(email)), expiresAt.UTC())
+	return err
+}
+
+func (db *DB) UseEmailChangeToken(tokenHash string) (User, error) {
+	tx, err := db.Begin()
+	if err != nil {
+		return User{}, err
+	}
+	defer tx.Rollback()
+
+	var userID int64
+	var email string
+	err = tx.QueryRow(`
+select user_id, email
+from email_change_tokens
+where token_hash = ? and used_at is null and expires_at > current_timestamp`, tokenHash).
+		Scan(&userID, &email)
+	if err != nil {
+		return User{}, err
+	}
+	if _, err := tx.Exec(`update users set email = ? where id = ?`, email, userID); err != nil {
+		return User{}, err
+	}
+	if _, err := tx.Exec(`update email_change_tokens set used_at = current_timestamp where token_hash = ?`, tokenHash); err != nil {
+		return User{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return User{}, err
+	}
+
+	var user User
+	err = db.QueryRow(`select id, username, domain, email, fediverse_acct, email_opt_in, timestamp_preference, migration_target, created_at from users where id = ?`, userID).
+		Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt)
+	user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
+	return user, err
 }
 
 func (db *DB) UpdateTimestampPreference(userID int64, preference string) error {
