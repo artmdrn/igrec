@@ -1,0 +1,20 @@
+[Unit]
+Description=igrec one-word publishing
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=igrec
+Group=igrec
+WorkingDirectory=/opt/igrec/src
+EnvironmentFile=/opt/igrec/.env
+ExecStart=/opt/igrec/bin/igrec
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/igrec/data
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,18 @@
+{{template "head" .}}
+<main>
+  <section class="profile">
+    <h1>@{{.User.Username}}</h1>
+    {{if .User.Domain}}<a rel="me" href="https://{{.User.Domain}}">{{.User.Domain}}</a>{{end}}
+  </section>
+  <section class="grid" aria-label="word archive">
+    {{range .Posts}}
+      <a class="tile" href="/@{{.Username}}/{{.Word}}">
+        <span>{{.Word}}</span>
+        <time>{{.CreatedAt.Format "Jan 02"}}</time>
+      </a>
+    {{else}}
+      <p class="empty">_</p>
+    {{end}}
+  </section>
+</main>
+{{template "foot" .}}

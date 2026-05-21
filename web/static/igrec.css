@@ -1,0 +1,198 @@
+:root {
+  color-scheme: light;
+  --ink: #111;
+  --paper: #f6eedc;
+  --acid: #d7ff33;
+  --pink: #ff5c9a;
+  --blue: #1f6bff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  background:
+    repeating-linear-gradient(0deg, rgba(0,0,0,.04), rgba(0,0,0,.04) 1px, transparent 1px, transparent 6px),
+    var(--paper);
+  font: 16px/1.35 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  letter-spacing: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.mast {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .75rem;
+  border-bottom: 3px solid var(--ink);
+  background: var(--paper);
+  text-transform: uppercase;
+}
+
+.logo {
+  font-weight: 900;
+  font-size: clamp(1.4rem, 6vw, 3.6rem);
+  line-height: .8;
+  text-shadow: 2px 0 var(--pink), -2px 0 var(--blue);
+}
+
+nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: .7rem;
+  font-size: .85rem;
+}
+
+main {
+  width: min(100%, 980px);
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.feed {
+  display: grid;
+  gap: .75rem;
+}
+
+.word {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: .35rem .75rem;
+  padding: .8rem 0;
+  border-bottom: 2px solid var(--ink);
+}
+
+.said,
+time {
+  font-size: .78rem;
+  text-transform: uppercase;
+}
+
+.value {
+  grid-column: 1 / -1;
+  overflow-wrap: anywhere;
+  font-size: clamp(2.7rem, 17vw, 11rem);
+  font-weight: 900;
+  line-height: .8;
+  text-transform: none;
+}
+
+.word img {
+  grid-column: 1 / -1;
+  width: min(100%, 520px);
+  max-height: 60vh;
+  object-fit: cover;
+  border: 3px solid var(--ink);
+  filter: contrast(1.15) saturate(.85);
+}
+
+.profile {
+  padding: 1rem 0 2rem;
+  border-bottom: 3px solid var(--ink);
+}
+
+h1 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: clamp(3rem, 18vw, 10rem);
+  line-height: .82;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0;
+  border-left: 2px solid var(--ink);
+}
+
+.tile {
+  min-height: 130px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: .7rem;
+  border-right: 2px solid var(--ink);
+  border-bottom: 2px solid var(--ink);
+  background: rgba(255,255,255,.25);
+}
+
+.tile span {
+  overflow-wrap: anywhere;
+  font-size: 1.8rem;
+  font-weight: 900;
+}
+
+.write form,
+.settings form {
+  display: grid;
+  gap: .75rem;
+  margin-top: 12vh;
+}
+
+input,
+button {
+  width: 100%;
+  border: 3px solid var(--ink);
+  border-radius: 0;
+  background: #fffef7;
+  color: var(--ink);
+  font: inherit;
+}
+
+input {
+  padding: .8rem;
+}
+
+.write input[name="word"] {
+  min-height: 6rem;
+  font-size: clamp(2.5rem, 14vw, 8rem);
+  font-weight: 900;
+}
+
+button {
+  min-height: 3.2rem;
+  padding: .8rem;
+  background: var(--acid);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+label {
+  display: grid;
+  gap: .3rem;
+  text-transform: uppercase;
+}
+
+label input[type="checkbox"] {
+  width: auto;
+}
+
+.danger {
+  background: var(--pink);
+}
+
+.error {
+  margin: 0;
+  padding: .5rem;
+  background: var(--pink);
+  border: 3px solid var(--ink);
+}
+
+.empty {
+  min-height: 70vh;
+  display: grid;
+  place-items: center;
+  font-size: 20vw;
+}

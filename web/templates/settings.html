@@ -1,0 +1,12 @@
+{{template "head" .}}
+<main class="settings">
+  <form>
+    <label>email <input type="email" name="email"></label>
+    <label><input type="checkbox" name="daily"> daily word</label>
+    <label>fediverse <input name="fediverse" placeholder="@you@example.social"></label>
+    <button type="button">export</button>
+    <button type="button">migrate</button>
+    <button type="button" class="danger">delete</button>
+  </form>
+</main>
+{{template "foot" .}}

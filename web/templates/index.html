@@ -1,0 +1,14 @@
+{{template "head" .}}
+<main class="feed" aria-label="public firehose">
+  {{range .Posts}}
+    <article class="word">
+      <a class="said" href="/@{{.Username}}">@{{.Username}}</a>
+      <a class="value" href="/@{{.Username}}/{{.Word}}">{{.Word}}</a>
+      <time>{{.CreatedAt.Format "2006-01-02 15:04"}}</time>
+      {{if .ImageURL.Valid}}<img src="{{.ImageURL.String}}" alt="">{{end}}
+    </article>
+  {{else}}
+    <p class="empty">_</p>
+  {{end}}
+</main>
+{{template "foot" .}}
