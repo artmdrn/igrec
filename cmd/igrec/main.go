@@ -17,6 +17,7 @@ func main() {
 		DatabaseURL:  env("DATABASE_URL", "sqlite://igrec.db"),
 		AppSecret:    os.Getenv("APP_SECRET"),
 		ResendAPIKey: os.Getenv("RESEND_API_KEY"),
+		EmailFrom:    env("EMAIL_FROM", "igrec <hello@igrec.net>"),
 		VAPIDPublic:  os.Getenv("VAPID_PUBLIC_KEY"),
 		VAPIDPrivate: os.Getenv("VAPID_PRIVATE_KEY"),
 	}

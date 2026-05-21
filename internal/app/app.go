@@ -1,16 +1,23 @@
 package app
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
 	"net/http"
+	"net/mail"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
 	"igrec.net/igrec/internal/activitypub"
+	emailpkg "igrec.net/igrec/internal/email"
 	"igrec.net/igrec/internal/store"
 	"igrec.net/igrec/internal/word"
 )
@@ -21,6 +28,7 @@ type Config struct {
 	DatabaseURL  string
 	AppSecret    string
 	ResendAPIKey string
+	EmailFrom    string
 	VAPIDPublic  string
 	VAPIDPrivate string
 }
@@ -37,6 +45,10 @@ type postView struct {
 	MachineTime string
 }
 
+const sessionCookie = "igrec_session"
+
+var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9_]{1,32}$`)
+
 func New(cfg Config, db *store.DB) http.Handler {
 	app := &App{
 		cfg:       cfg,
@@ -47,8 +59,13 @@ func New(cfg Config, db *store.DB) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static"))))
 	mux.HandleFunc("/", app.route)
+	mux.HandleFunc("/join", app.join)
+	mux.HandleFunc("/login", app.login)
+	mux.HandleFunc("/logout", app.logout)
+	mux.HandleFunc("/auth/magic", app.magic)
 	mux.HandleFunc("/write", app.write)
 	mux.HandleFunc("/settings", app.settings)
+	mux.HandleFunc("/admin/invites", app.adminInvites)
 	mux.HandleFunc("/inbound/email", app.inboundEmail)
 	mux.HandleFunc("/.well-known/webfinger", app.webfinger)
 	mux.HandleFunc("/ap/users/", app.actor)
@@ -98,9 +115,9 @@ func (a *App) profile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) write(w http.ResponseWriter, r *http.Request) {
-	user, err := a.db.EnsureLocalUser("demo")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	user, ok := a.currentUser(r)
+	if !ok {
+		a.requireLogin(w, r)
 		return
 	}
 
@@ -129,9 +146,9 @@ func (a *App) write(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) settings(w http.ResponseWriter, r *http.Request) {
-	user, err := a.db.EnsureLocalUser("demo")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	user, ok := a.currentUser(r)
+	if !ok {
+		a.requireLogin(w, r)
 		return
 	}
 
@@ -147,6 +164,127 @@ func (a *App) settings(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func (a *App) join(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		a.render(w, "join.html", map[string]any{"Invite": r.URL.Query().Get("invite")})
+	case http.MethodPost:
+		inviteCode := strings.TrimSpace(r.FormValue("invite"))
+		username := strings.TrimSpace(r.FormValue("username"))
+		email := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
+		if !usernamePattern.MatchString(username) {
+			a.render(w, "join.html", map[string]any{"Error": "username can use letters, numbers, and underscore", "Invite": inviteCode, "Username": username, "Email": email})
+			return
+		}
+		if _, err := mail.ParseAddress(email); err != nil {
+			a.render(w, "join.html", map[string]any{"Error": "email is not valid", "Invite": inviteCode, "Username": username, "Email": email})
+			return
+		}
+		invite, err := a.db.InviteByCode(inviteCode)
+		if err != nil || invite.UsedAt.Valid {
+			a.render(w, "join.html", map[string]any{"Error": "invite is not valid", "Invite": inviteCode, "Username": username, "Email": email})
+			return
+		}
+		user, err := a.db.CreateUser(username, email)
+		if err != nil {
+			a.render(w, "join.html", map[string]any{"Error": "username or email is already taken", "Invite": inviteCode, "Username": username, "Email": email})
+			return
+		}
+		if err := a.db.UseInvite(invite.Code, user.ID); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if err := a.startSession(w, user.ID); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		http.Redirect(w, r, "/write", http.StatusSeeOther)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (a *App) login(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		a.render(w, "login.html", map[string]any{"Next": r.URL.Query().Get("next")})
+	case http.MethodPost:
+		email := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
+		next := safeNext(r.FormValue("next"))
+		user, err := a.db.UserByEmail(email)
+		if err == nil {
+			token, tokenHash, err := newToken()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if err := a.db.CreateLoginToken(tokenHash, user.ID, time.Now().Add(20*time.Minute)); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			link := strings.TrimRight(a.cfg.BaseURL, "/") + "/auth/magic?token=" + url.QueryEscape(token) + "&next=" + url.QueryEscape(next)
+			body := "sign in to igrec:\n\n" + link + "\n\nthis link expires in 20 minutes.\n"
+			err = (emailpkg.Resend{APIKey: a.cfg.ResendAPIKey, From: a.cfg.EmailFrom}).SendPlain(user.Email, "igrec sign in", body)
+			if err != nil {
+				a.render(w, "login.html", map[string]any{"Error": err.Error(), "Email": email, "Next": next})
+				return
+			}
+		}
+		a.render(w, "login_sent.html", map[string]any{"Email": email})
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (a *App) magic(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		http.NotFound(w, r)
+		return
+	}
+	user, err := a.db.UseLoginToken(hashToken(token))
+	if err != nil {
+		a.render(w, "login.html", map[string]any{"Error": "login link is invalid or expired"})
+		return
+	}
+	if err := a.startSession(w, user.ID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, safeNext(r.URL.Query().Get("next")), http.StatusSeeOther)
+}
+
+func (a *App) logout(w http.ResponseWriter, r *http.Request) {
+	if cookie, err := r.Cookie(sessionCookie); err == nil {
+		_ = a.db.DeleteSession(hashToken(cookie.Value))
+	}
+	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: a.secureCookies()})
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func (a *App) adminInvites(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		a.render(w, "admin_invites.html", nil)
+		return
+	}
+	if a.cfg.AppSecret == "" || subtle.ConstantTimeCompare([]byte(r.FormValue("secret")), []byte(a.cfg.AppSecret)) != 1 {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	token, _, err := newToken()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	code := strings.TrimRight(base64.RawURLEncoding.EncodeToString([]byte(token))[:22], "=")
+	if err := a.db.CreateInvite(code); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	link := strings.TrimRight(a.cfg.BaseURL, "/") + "/join?invite=" + url.QueryEscape(code)
+	a.render(w, "admin_invites.html", map[string]any{"InviteLink": link})
 }
 
 func (a *App) inboundEmail(w http.ResponseWriter, r *http.Request) {
@@ -176,9 +314,9 @@ func (a *App) inboundEmail(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	user, err := a.db.EnsureLocalUser("email")
+	user, err := a.db.UserByEmail(senderEmail(payload.From))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "sender is not an igrec user", http.StatusNotFound)
 		return
 	}
 	post, err := a.db.CreatePost(user.ID, value, nil)
@@ -258,6 +396,73 @@ func (a *App) render(w http.ResponseWriter, name string, data any) {
 func writeJSON(w http.ResponseWriter, contentType string, data any) {
 	w.Header().Set("Content-Type", contentType)
 	_ = json.NewEncoder(w).Encode(data)
+}
+
+func (a *App) currentUser(r *http.Request) (store.User, bool) {
+	cookie, err := r.Cookie(sessionCookie)
+	if err != nil || cookie.Value == "" {
+		return store.User{}, false
+	}
+	user, err := a.db.UserBySessionHash(hashToken(cookie.Value))
+	return user, err == nil
+}
+
+func (a *App) requireLogin(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/login?next="+url.QueryEscape(r.URL.RequestURI()), http.StatusSeeOther)
+}
+
+func (a *App) startSession(w http.ResponseWriter, userID int64) error {
+	token, tokenHash, err := newToken()
+	if err != nil {
+		return err
+	}
+	expires := time.Now().Add(30 * 24 * time.Hour)
+	if err := a.db.CreateSession(tokenHash, userID, expires); err != nil {
+		return err
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     sessionCookie,
+		Value:    token,
+		Path:     "/",
+		Expires:  expires,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   a.secureCookies(),
+	})
+	return nil
+}
+
+func (a *App) secureCookies() bool {
+	return strings.HasPrefix(a.cfg.BaseURL, "https://")
+}
+
+func newToken() (string, string, error) {
+	var raw [32]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", "", err
+	}
+	token := base64.RawURLEncoding.EncodeToString(raw[:])
+	return token, hashToken(token), nil
+}
+
+func hashToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return fmt.Sprintf("%x", sum[:])
+}
+
+func safeNext(next string) string {
+	if next == "" || !strings.HasPrefix(next, "/") || strings.HasPrefix(next, "//") {
+		return "/write"
+	}
+	return next
+}
+
+func senderEmail(raw string) string {
+	addr, err := mail.ParseAddress(raw)
+	if err == nil {
+		return strings.ToLower(strings.TrimSpace(addr.Address))
+	}
+	return strings.ToLower(strings.TrimSpace(raw))
 }
 
 func profilePostViews(posts []store.Post, preference string) []postView {

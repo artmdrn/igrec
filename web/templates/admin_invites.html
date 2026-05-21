@@ -1,0 +1,9 @@
+{{template "head" .}}
+<main class="settings">
+  <form method="post" action="/admin/invites">
+    {{if .InviteLink}}<p class="notice">{{.InviteLink}}</p>{{end}}
+    <label>secret <input name="secret" type="password" required></label>
+    <button type="submit">make invite</button>
+  </form>
+</main>
+{{template "foot" .}}

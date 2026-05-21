@@ -19,14 +19,22 @@ go run ./cmd/igrec
 
 Open `http://localhost:8080`.
 
+## Users
+
+Registration is invite-only. During beta, operators can create one invite at `/admin/invites` by posting `secret=<APP_SECRET>`. The result is a `/join?invite=...` link.
+
+Users sign in by magic link through `/login`; no passwords are stored. `/write` and `/settings` require a session.
+
 ## Implemented foundation
 
 - Public firehose at `/`
 - User archive at `/@username`
 - Write form at `/write`
 - Settings shell at `/settings`
+- Invite-only user registration at `/join`
+- Magic-link login at `/login`
 - Server-side one-word validation with Unicode support
-- SQLite schema for users, invites, posts, follows
+- SQLite schema for users, invites, sessions, login tokens, posts, follows
 - ActivityPub actor, WebFinger, and outbox JSON
 - Resend plain-text email helper
 - Cloudflare Email Worker skeleton for inbound posting
@@ -34,13 +42,13 @@ Open `http://localhost:8080`.
 
 ## Still needed before production
 
-- IndieAuth, Mastodon OAuth, and magic-link sessions
-- Invite redemption UI and admin invite generation
+- IndieAuth and Mastodon OAuth
+- Real operator invite UI
 - Real image upload storage
 - Signed ActivityPub delivery to follower inboxes
 - VAPID subscription storage and push delivery
 - Settings mutations, export, migration, and delete flows
-- Full auth/session flows for production users
+- CSRF protection for session-backed forms
 
 ## Cloudflare setup
 

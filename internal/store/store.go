@@ -35,6 +35,13 @@ type Post struct {
 	CreatedAt time.Time
 }
 
+type Invite struct {
+	Code      string
+	UsedBy    sql.NullInt64
+	CreatedAt time.Time
+	UsedAt    sql.NullTime
+}
+
 func Open(databaseURL string) (*DB, error) {
 	driver, dsn, err := parseDatabaseURL(databaseURL)
 	if err != nil {
@@ -80,6 +87,19 @@ create table if not exists invites (
   created_at datetime not null default current_timestamp,
   used_at datetime
 );
+create table if not exists sessions (
+  token_hash text primary key,
+  user_id integer not null references users(id),
+  created_at datetime not null default current_timestamp,
+  expires_at datetime not null
+);
+create table if not exists login_tokens (
+  token_hash text primary key,
+  user_id integer not null references users(id),
+  created_at datetime not null default current_timestamp,
+  expires_at datetime not null,
+  used_at datetime
+);
 create table if not exists posts (
   id integer primary key autoincrement,
   user_id integer not null references users(id),
@@ -89,6 +109,9 @@ create table if not exists posts (
 );
 create index if not exists posts_created_at_idx on posts(created_at desc, id desc);
 create index if not exists posts_user_word_idx on posts(user_id, word);
+create unique index if not exists users_email_unique_idx on users(email) where email != '';
+create index if not exists sessions_user_idx on sessions(user_id);
+create index if not exists login_tokens_user_idx on login_tokens(user_id);
 create table if not exists follows (
   id integer primary key autoincrement,
   follower_actor text not null,
@@ -159,6 +182,103 @@ func (db *DB) UserByUsername(username string) (User, error) {
 		Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt)
 	user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
 	return user, err
+}
+
+func (db *DB) UserByEmail(email string) (User, error) {
+	var user User
+	err := db.QueryRow(`select id, username, domain, email, fediverse_acct, email_opt_in, timestamp_preference, migration_target, created_at from users where lower(email) = lower(?)`, strings.TrimSpace(email)).
+		Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt)
+	user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
+	return user, err
+}
+
+func (db *DB) UserBySessionHash(tokenHash string) (User, error) {
+	var user User
+	err := db.QueryRow(`
+select users.id, users.username, users.domain, users.email, users.fediverse_acct, users.email_opt_in, users.timestamp_preference, users.migration_target, users.created_at
+from sessions join users on users.id = sessions.user_id
+where sessions.token_hash = ? and sessions.expires_at > current_timestamp`, tokenHash).
+		Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt)
+	user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
+	return user, err
+}
+
+func (db *DB) CreateUser(username, email string) (User, error) {
+	res, err := db.Exec(`insert into users(username, email, timestamp_preference) values(?, ?, 'smart')`, username, strings.ToLower(strings.TrimSpace(email)))
+	if err != nil {
+		return User{}, err
+	}
+	id, _ := res.LastInsertId()
+	var user User
+	err = db.QueryRow(`select id, username, domain, email, fediverse_acct, email_opt_in, timestamp_preference, migration_target, created_at from users where id = ?`, id).
+		Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt)
+	user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
+	return user, err
+}
+
+func (db *DB) CreateInvite(code string) error {
+	_, err := db.Exec(`insert into invites(code) values(?)`, code)
+	return err
+}
+
+func (db *DB) InviteByCode(code string) (Invite, error) {
+	var invite Invite
+	err := db.QueryRow(`select code, used_by, created_at, used_at from invites where code = ?`, code).
+		Scan(&invite.Code, &invite.UsedBy, &invite.CreatedAt, &invite.UsedAt)
+	return invite, err
+}
+
+func (db *DB) UseInvite(code string, userID int64) error {
+	res, err := db.Exec(`update invites set used_by = ?, used_at = current_timestamp where code = ? and used_at is null`, userID, code)
+	if err != nil {
+		return err
+	}
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (db *DB) CreateSession(tokenHash string, userID int64, expiresAt time.Time) error {
+	_, err := db.Exec(`insert into sessions(token_hash, user_id, expires_at) values(?, ?, ?)`, tokenHash, userID, expiresAt.UTC())
+	return err
+}
+
+func (db *DB) DeleteSession(tokenHash string) error {
+	_, err := db.Exec(`delete from sessions where token_hash = ?`, tokenHash)
+	return err
+}
+
+func (db *DB) CreateLoginToken(tokenHash string, userID int64, expiresAt time.Time) error {
+	_, err := db.Exec(`insert into login_tokens(token_hash, user_id, expires_at) values(?, ?, ?)`, tokenHash, userID, expiresAt.UTC())
+	return err
+}
+
+func (db *DB) UseLoginToken(tokenHash string) (User, error) {
+	tx, err := db.Begin()
+	if err != nil {
+		return User{}, err
+	}
+	defer tx.Rollback()
+
+	var user User
+	err = tx.QueryRow(`
+select users.id, users.username, users.domain, users.email, users.fediverse_acct, users.email_opt_in, users.timestamp_preference, users.migration_target, users.created_at
+from login_tokens join users on users.id = login_tokens.user_id
+where login_tokens.token_hash = ? and login_tokens.used_at is null and login_tokens.expires_at > current_timestamp`, tokenHash).
+		Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt)
+	if err != nil {
+		return User{}, err
+	}
+	if _, err := tx.Exec(`update login_tokens set used_at = current_timestamp where token_hash = ?`, tokenHash); err != nil {
+		return User{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return User{}, err
+	}
+	user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
+	return user, nil
 }
 
 func (db *DB) UpdateTimestampPreference(userID int64, preference string) error {

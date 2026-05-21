@@ -18,11 +18,13 @@ Done when:
 
 ## Phase 1: Invite-Only Accounts And Magic Links
 
-- Add invite creation and redemption.
-- Add users with stable usernames, emails, and session cookies.
-- Add magic-link login through Resend.
-- Make `/write` require login.
-- Make inbound email posting map to a real opted-in user.
+- [x] Add invite creation and redemption.
+- [x] Add users with stable usernames, emails, and session cookies.
+- [x] Add magic-link login through Resend.
+- [x] Make `/write` require login.
+- [x] Make inbound email posting map to a real user email.
+- [ ] Replace beta admin invite endpoint with a real operator UI.
+- [ ] Add CSRF protection for session-backed form posts.
 
 Done when:
 

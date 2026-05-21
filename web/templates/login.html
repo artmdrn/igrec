@@ -1,0 +1,10 @@
+{{template "head" .}}
+<main class="settings">
+  <form method="post" action="/login">
+    {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+    <input type="hidden" name="next" value="{{.Next}}">
+    <label>email <input type="email" name="email" value="{{.Email}}" autocomplete="email" required></label>
+    <button type="submit">send link</button>
+  </form>
+</main>
+{{template "foot" .}}
