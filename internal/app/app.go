@@ -307,14 +307,9 @@ func (a *App) inboundEmail(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	fields := strings.Fields(payload.Text)
-	if len(fields) == 0 {
-		http.Error(w, "no word found", http.StatusBadRequest)
-		return
-	}
-	value, err := word.Normalize(fields[0])
+	value, err := firstInboundWord(payload.Text)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, "no word found", http.StatusBadRequest)
 		return
 	}
 	user, err := a.db.UserByEmail(senderEmail(payload.From))
@@ -469,6 +464,25 @@ func senderEmail(raw string) string {
 		return strings.ToLower(strings.TrimSpace(addr.Address))
 	}
 	return strings.ToLower(strings.TrimSpace(raw))
+}
+
+func firstInboundWord(text string) (string, error) {
+	for _, line := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" ||
+			strings.HasPrefix(line, ">") ||
+			strings.HasPrefix(line, "--") ||
+			strings.Contains(line, ":") ||
+			strings.HasPrefix(strings.ToLower(line), "on ") {
+			continue
+		}
+		for _, field := range strings.Fields(line) {
+			if value, err := word.Normalize(field); err == nil {
+				return value, nil
+			}
+		}
+	}
+	return "", errors.New("no word found")
 }
 
 func normalizeSignupUsername(raw string) (string, error) {
