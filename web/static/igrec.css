@@ -191,6 +191,25 @@ label input[type="checkbox"] {
   width: auto;
 }
 
+.handle-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+}
+
+.handle-input input {
+  border-right: 0;
+}
+
+.handle-input b {
+  display: grid;
+  place-items: center;
+  padding: 0 .8rem;
+  border: 3px solid var(--ink);
+  background: var(--acid);
+  white-space: nowrap;
+}
+
 .danger {
   background: var(--pink);
 }

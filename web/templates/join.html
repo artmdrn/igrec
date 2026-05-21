@@ -3,7 +3,12 @@
   <form method="post" action="/join">
     {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
     <label>invite <input name="invite" value="{{.Invite}}" required></label>
-    <label>username <input name="username" value="{{.Username}}" pattern="[A-Za-z0-9_]{1,32}" autocomplete="username" required></label>
+    <label>handle
+      <span class="handle-input">
+        <input name="username" value="{{.Username}}" pattern="@?[A-Za-z0-9_]{1,32}(@igrec\\.net)?" autocomplete="username" required>
+        <b>@igrec.net</b>
+      </span>
+    </label>
     <label>email <input type="email" name="email" value="{{.Email}}" autocomplete="email" required></label>
     <button type="submit">join</button>
   </form>

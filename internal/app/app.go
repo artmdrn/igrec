@@ -172,10 +172,10 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 		a.render(w, "join.html", map[string]any{"Invite": r.URL.Query().Get("invite")})
 	case http.MethodPost:
 		inviteCode := strings.TrimSpace(r.FormValue("invite"))
-		username := strings.TrimSpace(r.FormValue("username"))
+		username, usernameErr := normalizeSignupUsername(r.FormValue("username"))
 		email := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
-		if !usernamePattern.MatchString(username) {
-			a.render(w, "join.html", map[string]any{"Error": "username can use letters, numbers, and underscore", "Invite": inviteCode, "Username": username, "Email": email})
+		if usernameErr != nil {
+			a.render(w, "join.html", map[string]any{"Error": usernameErr.Error(), "Invite": inviteCode, "Username": r.FormValue("username"), "Email": email})
 			return
 		}
 		if _, err := mail.ParseAddress(email); err != nil {
@@ -463,6 +463,22 @@ func senderEmail(raw string) string {
 		return strings.ToLower(strings.TrimSpace(addr.Address))
 	}
 	return strings.ToLower(strings.TrimSpace(raw))
+}
+
+func normalizeSignupUsername(raw string) (string, error) {
+	value := strings.TrimSpace(raw)
+	value = strings.TrimPrefix(value, "@")
+	if strings.Contains(value, "@") {
+		parts := strings.Split(value, "@")
+		if len(parts) != 2 || !strings.EqualFold(parts[1], "igrec.net") {
+			return "", errors.New("choose a handle at igrec.net")
+		}
+		value = parts[0]
+	}
+	if !usernamePattern.MatchString(value) {
+		return "", errors.New("handle can use letters, numbers, and underscore")
+	}
+	return value, nil
 }
 
 func profilePostViews(posts []store.Post, preference string) []postView {
