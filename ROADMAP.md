@@ -23,6 +23,8 @@ Done when:
 - [x] Add magic-link login through Resend.
 - [x] Make `/write` require login.
 - [x] Make inbound email posting map to a real user email.
+- [ ] Let logged-in users create and manage passkeys.
+- [ ] Let users sign in with passkeys after their first magic-link login.
 - [ ] Replace beta admin invite endpoint with a real operator UI.
 - [ ] Add CSRF protection for session-backed form posts.
 
@@ -30,6 +32,7 @@ Done when:
 
 - A new account can be created only with an invite.
 - A user can log in without a password.
+- A logged-in user can add a passkey and use it for future login.
 - Posts are attributed to the logged-in user, not `demo`.
 
 ## Phase 2: The One-Word Product Loop

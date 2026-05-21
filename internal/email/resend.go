@@ -19,7 +19,7 @@ func (r Resend) SendPlain(to, subject, body string) error {
 		return fmt.Errorf("RESEND_API_KEY is not configured")
 	}
 	if r.From == "" {
-		r.From = "igrec <!@igrec.net>"
+		r.From = "Y <!@igrec.net>"
 	}
 	payload := map[string]any{
 		"from":    r.From,

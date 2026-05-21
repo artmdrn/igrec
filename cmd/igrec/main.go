@@ -19,11 +19,11 @@ func main() {
 		ResendAPIKey: os.Getenv("RESEND_API_KEY"),
 		LoginEmailFrom: envFallback(
 			[]string{"LOGIN_EMAIL_FROM", "EMAIL_FROM"},
-			"igrec <!@igrec.net>",
+			"Y <!@igrec.net>",
 		),
 		DailyEmailFrom: envFallback(
 			[]string{"DAILY_EMAIL_FROM", "EMAIL_FROM"},
-			"igrec <_@igrec.net>",
+			"Y <_@igrec.net>",
 		),
 		VAPIDPublic:  os.Getenv("VAPID_PUBLIC_KEY"),
 		VAPIDPrivate: os.Getenv("VAPID_PRIVATE_KEY"),
