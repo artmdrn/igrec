@@ -122,3 +122,56 @@ Done when:
 ## Suggested Next Task
 
 Implement Phase 1 magic-link auth and invite-only registration. This removes the `demo` user placeholder and makes the deployed app usable by real people.
+
+## v2 Ideas
+
+These are deliberately parked until the beta loop is stable. They should not be picked before the Phase 0-7 work unless explicitly requested.
+
+### Public Read API
+
+- Add a read-only public REST API.
+- `GET /api/@username/words` returns a user's full word archive as JSON.
+- Use the same internal representation to power email and PWA features.
+
+Done when:
+
+- Public archives are available as stable JSON without authentication.
+- API output includes enough metadata for clients to render dates according to user preference.
+
+### On This Day
+
+- After one year of activity, daily email gains a second line:
+  `On this day last year, you said: [word].`
+- Stay completely silent until there is at least one eligible prior-year word.
+
+Done when:
+
+- Daily email includes the line only when a same-month/day word exists from a prior year.
+- No placeholder copy appears before the first anniversary.
+
+### Private Streaks
+
+- Add a private streak counter.
+- Show streaks only in `/settings` and `/write`.
+- Never expose streaks publicly or through public profile pages.
+- Email subject shifts from `>` to `>>` if the user has not posted today.
+- Keep the tone informational, not guilt-driven.
+
+Done when:
+
+- Users can see their own streak privately.
+- Public pages and public APIs do not reveal streaks.
+- Daily email subject reflects whether today's word has happened.
+
+### Last Word
+
+- After one year of inactivity, not deletion, an account goes quiet.
+- The final word remains permanently in archives.
+- The final word is attributed as `·` with no profile link.
+- Example display: `· ember`
+
+Done when:
+
+- Inactive accounts stop behaving as active profiles after one year.
+- Their final word remains visible and stable.
+- Public rendering uses the anonymous dot attribution without linking to the profile.
