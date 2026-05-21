@@ -26,7 +26,7 @@ func sendDailyEmails(cfg app.Config, db *store.DB) (int, error) {
 		err := (emailpkg.Resend{
 			APIKey:  cfg.ResendAPIKey,
 			From:    cfg.DailyEmailFrom,
-			ReplyTo: "_@igrec.net",
+			ReplyTo: fmt.Sprintf("Y <_+%s@igrec.net>", candidate.User.Username),
 		}).SendPlain(candidate.User.Email, ">", body)
 		if err != nil {
 			return sent, fmt.Errorf("send daily email to %s: %w", candidate.User.Email, err)

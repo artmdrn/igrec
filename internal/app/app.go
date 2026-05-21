@@ -301,6 +301,7 @@ func (a *App) inboundEmail(w http.ResponseWriter, r *http.Request) {
 	}
 	var payload struct {
 		From string `json:"from"`
+		To   string `json:"to"`
 		Text string `json:"text"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
@@ -312,7 +313,7 @@ func (a *App) inboundEmail(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no word found", http.StatusBadRequest)
 		return
 	}
-	user, err := a.db.UserByEmail(senderEmail(payload.From))
+	user, err := a.inboundUser(payload.From, payload.To)
 	if err != nil {
 		http.Error(w, "sender is not an igrec user", http.StatusNotFound)
 		return
@@ -464,6 +465,36 @@ func senderEmail(raw string) string {
 		return strings.ToLower(strings.TrimSpace(addr.Address))
 	}
 	return strings.ToLower(strings.TrimSpace(raw))
+}
+
+func (a *App) inboundUser(from, to string) (store.User, error) {
+	if user, err := a.db.UserByEmail(senderEmail(from)); err == nil {
+		return user, nil
+	}
+	for _, recipient := range strings.Split(to, ",") {
+		username := taggedDailyRecipient(recipient)
+		if username == "" {
+			continue
+		}
+		if user, err := a.db.UserByUsername(username); err == nil {
+			return user, nil
+		}
+	}
+	return store.User{}, errors.New("sender is not an igrec user")
+}
+
+func taggedDailyRecipient(raw string) string {
+	addr, err := mail.ParseAddress(raw)
+	value := strings.TrimSpace(raw)
+	if err == nil {
+		value = addr.Address
+	}
+	value = strings.ToLower(strings.TrimSpace(value))
+	local, domain, ok := strings.Cut(value, "@")
+	if !ok || domain != "igrec.net" || !strings.HasPrefix(local, "_+") {
+		return ""
+	}
+	return strings.TrimPrefix(local, "_+")
 }
 
 func firstInboundWord(text string) (string, error) {
