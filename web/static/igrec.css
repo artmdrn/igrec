@@ -2,9 +2,8 @@
   color-scheme: light;
   --ink: #111;
   --paper: #f6eedc;
-  --acid: #d7ff33;
-  --pink: #ff5c9a;
-  --blue: #1f6bff;
+  --cyan: #00dce8;
+  --red: #ff1f2d;
 }
 
 * {
@@ -46,7 +45,7 @@ a {
   font-weight: 900;
   font-size: clamp(1.4rem, 6vw, 3.6rem);
   line-height: .8;
-  text-shadow: 2px 0 var(--pink), -2px 0 var(--blue);
+  text-shadow: 2px 0 var(--red), -2px 0 var(--cyan);
 }
 
 .logo img {
@@ -54,7 +53,7 @@ a {
   height: clamp(1.3rem, 5vw, 3rem);
   object-fit: cover;
   border: 2px solid var(--ink);
-  box-shadow: 2px 0 var(--pink), -2px 0 var(--blue);
+  box-shadow: 2px 0 var(--red), -2px 0 var(--cyan);
 }
 
 nav {
@@ -178,7 +177,7 @@ select {
 button {
   min-height: 3.2rem;
   padding: .8rem;
-  background: var(--acid);
+  background: var(--cyan);
   text-transform: uppercase;
   cursor: pointer;
 }
@@ -217,18 +216,19 @@ label input[type="checkbox"] {
   place-items: center;
   padding: 0 .8rem;
   border: 3px solid var(--ink);
-  background: var(--acid);
+  background: var(--red);
+  color: #fff;
   white-space: nowrap;
 }
 
 .danger {
-  background: var(--pink);
+  background: var(--red);
 }
 
 .error {
   margin: 0;
   padding: .5rem;
-  background: var(--pink);
+  background: var(--red);
   border: 3px solid var(--ink);
 }
 
@@ -236,7 +236,7 @@ label input[type="checkbox"] {
   margin: 0;
   padding: .8rem;
   border: 3px solid var(--ink);
-  background: var(--acid);
+  background: var(--cyan);
   overflow-wrap: anywhere;
 }
 
