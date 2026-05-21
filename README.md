@@ -78,10 +78,12 @@ The Oracle host is `79.72.31.189` (`codex-standby-vnic`). It runs igrec from `/o
 
 GitHub Actions runs `gofmt`, `go test ./...`, and `go build ./cmd/igrec` on every pull request and push to `main`.
 
-Deployments run after CI passes on `main`, or manually from the Deploy workflow. Required GitHub repository secrets:
+Deployments are manual during beta. Run the Deploy workflow from GitHub Actions when you want to update production. Required GitHub repository secrets:
 
 - `ORACLE_HOST`: `79.72.31.189`
 - `ORACLE_USER`: `ubuntu`
 - `ORACLE_SSH_KEY`: private SSH key with access to the Oracle host
 
 The deploy workflow uploads the source, builds on Oracle, restarts `igrec.service`, and smoke-tests nginx locally with `Host: igrec.net`.
+
+For stricter control, configure the `production` GitHub Environment to require your approval before jobs can access deployment secrets.

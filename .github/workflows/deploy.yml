@@ -1,13 +1,6 @@
 name: Deploy
 
 on:
-  workflow_run:
-    workflows:
-      - CI
-    branches:
-      - main
-    types:
-      - completed
   workflow_dispatch:
 
 permissions:
@@ -21,7 +14,7 @@ jobs:
   deploy:
     name: Deploy to Oracle
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    environment: production
 
     steps:
       - name: Check out repository
