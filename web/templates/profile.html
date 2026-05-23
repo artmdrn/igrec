@@ -2,7 +2,16 @@
 <main>
   <section class="profile">
     <h1>@{{.User.Username}}</h1>
+    {{if .Title}}<p class="notice">{{.Title}}</p>{{end}}
     {{if .User.Domain}}<a rel="me" href="https://{{.User.Domain}}">{{.User.Domain}}</a>{{end}}
+    {{if .Months}}
+      <nav class="archive-nav" aria-label="archive months">
+        <a href="/@{{.User.Username}}">all</a>
+        {{range .Months}}
+          <a href="{{.Href}}">{{.Label}}</a>
+        {{end}}
+      </nav>
+    {{end}}
   </section>
   <section class="grid" aria-label="word archive">
     {{range .Posts}}

@@ -16,6 +16,13 @@
     <button type="submit">save</button>
     <p class="notice" data-passkey-status>{{.PasskeyCount}} passkeys</p>
     <button type="button" data-passkey="register">add passkey</button>
+    <p class="notice">{{.InviteRemaining}} invites left</p>
+    {{range .Invites}}
+      <p class="notice">{{if .Used}}used {{end}}{{.Link}}</p>
+    {{end}}
+    {{if gt .InviteRemaining 0}}
+      <button type="submit" name="action" value="invite">make invite</button>
+    {{end}}
     <a class="button" href="/logout">logout</a>
     <button type="button">export</button>
     <button type="button">migrate</button>

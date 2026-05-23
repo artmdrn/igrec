@@ -40,6 +40,7 @@ type Post struct {
 
 type Invite struct {
 	Code      string
+	InviterID sql.NullInt64
 	UsedBy    sql.NullInt64
 	CreatedAt time.Time
 	UsedAt    sql.NullTime
@@ -99,6 +100,7 @@ create table if not exists users (
 );
 create table if not exists invites (
   code text primary key,
+  inviter_id integer references users(id),
   used_by integer references users(id),
   created_at datetime not null default current_timestamp,
   used_at datetime
@@ -163,6 +165,12 @@ create table if not exists follows (
   created_at datetime not null default current_timestamp,
   unique(follower_actor, user_id)
 );
+create table if not exists user_follows (
+  follower_user_id integer not null references users(id),
+  followed_user_id integer not null references users(id),
+  created_at datetime not null default current_timestamp,
+  primary key(follower_user_id, followed_user_id)
+);
 create table if not exists daily_email_sends (
   user_id integer not null references users(id),
   sent_on text not null,
@@ -173,7 +181,10 @@ create table if not exists daily_email_sends (
 	if _, err := db.Exec(schema); err != nil {
 		return err
 	}
-	return db.ensureColumn("users", "timestamp_preference", "text not null default 'smart'")
+	if err := db.ensureColumn("users", "timestamp_preference", "text not null default 'smart'"); err != nil {
+		return err
+	}
+	return db.ensureColumn("invites", "inviter_id", "integer references users(id)")
 }
 
 func (db *DB) ensureColumn(table, column, definition string) error {
@@ -270,11 +281,40 @@ func (db *DB) CreateInvite(code string) error {
 	return err
 }
 
+func (db *DB) CreateInviteForUser(code string, inviterID int64) error {
+	_, err := db.Exec(`insert into invites(code, inviter_id) values(?, ?)`, code, inviterID)
+	return err
+}
+
 func (db *DB) InviteByCode(code string) (Invite, error) {
 	var invite Invite
-	err := db.QueryRow(`select code, used_by, created_at, used_at from invites where code = ?`, code).
-		Scan(&invite.Code, &invite.UsedBy, &invite.CreatedAt, &invite.UsedAt)
+	err := db.QueryRow(`select code, inviter_id, used_by, created_at, used_at from invites where code = ?`, code).
+		Scan(&invite.Code, &invite.InviterID, &invite.UsedBy, &invite.CreatedAt, &invite.UsedAt)
 	return invite, err
+}
+
+func (db *DB) InvitesByInviter(inviterID int64) ([]Invite, error) {
+	rows, err := db.Query(`select code, inviter_id, used_by, created_at, used_at from invites where inviter_id = ? order by created_at asc`, inviterID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var invites []Invite
+	for rows.Next() {
+		var invite Invite
+		if err := rows.Scan(&invite.Code, &invite.InviterID, &invite.UsedBy, &invite.CreatedAt, &invite.UsedAt); err != nil {
+			return nil, err
+		}
+		invites = append(invites, invite)
+	}
+	return invites, rows.Err()
+}
+
+func (db *DB) InviteCountByInviter(inviterID int64) (int, error) {
+	var count int
+	err := db.QueryRow(`select count(*) from invites where inviter_id = ?`, inviterID).Scan(&count)
+	return count, err
 }
 
 func (db *DB) UseInvite(code string, userID int64) error {
@@ -287,6 +327,14 @@ func (db *DB) UseInvite(code string, userID int64) error {
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+func (db *DB) CreateUserFollow(followerID, followedID int64) error {
+	if followerID == followedID {
+		return nil
+	}
+	_, err := db.Exec(`insert or ignore into user_follows(follower_user_id, followed_user_id) values(?, ?)`, followerID, followedID)
+	return err
 }
 
 func (db *DB) CreateSession(tokenHash string, userID int64, expiresAt time.Time) error {
@@ -392,7 +440,13 @@ left join daily_email_sends on daily_email_sends.user_id = users.id and daily_em
 left join posts on posts.id = (
   select posts.id
   from posts
-  where posts.user_id != users.id
+  where (
+    posts.user_id in (select followed_user_id from user_follows where follower_user_id = users.id)
+    or (
+      not exists (select 1 from user_follows where follower_user_id = users.id)
+      and posts.user_id != users.id
+    )
+  )
   order by posts.created_at desc, posts.id desc
   limit 1
 )

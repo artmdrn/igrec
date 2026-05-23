@@ -113,6 +113,20 @@ time {
   border-bottom: 3px solid var(--ink);
 }
 
+.archive-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .6rem;
+  margin-top: 1rem;
+  text-transform: uppercase;
+}
+
+.archive-nav a {
+  border: 2px solid var(--ink);
+  padding: .25rem .45rem;
+  background: #fffef7;
+}
+
 h1 {
   margin: 0;
   overflow-wrap: anywhere;

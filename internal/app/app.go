@@ -46,6 +46,20 @@ type postView struct {
 	MachineTime string
 }
 
+type archiveMonth struct {
+	Year  string
+	Month string
+	Href  string
+	Label string
+	Count int
+}
+
+type inviteView struct {
+	Code string
+	Link string
+	Used bool
+}
+
 const sessionCookie = "igrec_session"
 
 var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9_]{1,32}$`)
@@ -117,7 +131,17 @@ func (a *App) profile(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	a.render(w, "profile.html", map[string]any{"User": user, "Posts": profilePostViews(posts, user.TimestampPreference)})
+	months := archiveMonths(user.Username, posts)
+	title := ""
+	if len(parts) > 1 && isArchiveYear(parts[1]) {
+		var ok bool
+		posts, title, ok = filterArchivePosts(posts, parts)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+	}
+	a.render(w, "profile.html", map[string]any{"User": user, "Posts": profilePostViews(posts, user.TimestampPreference), "Months": months, "Title": title})
 }
 
 func (a *App) write(w http.ResponseWriter, r *http.Request) {
@@ -160,14 +184,35 @@ func (a *App) settings(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		count, _ := a.db.PasskeyCount(user.ID)
-		a.render(w, "settings.html", map[string]any{"User": user, "VAPIDPublic": a.cfg.VAPIDPublic, "PasskeyCount": count})
+		a.render(w, "settings.html", a.settingsData(user, nil))
 	case http.MethodPost:
+		if r.FormValue("action") == "invite" {
+			created, err := a.db.InviteCountByInviter(user.ID)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if created >= 3 {
+				a.render(w, "settings.html", a.settingsData(user, map[string]any{"Error": "all invites are already made"}))
+				return
+			}
+			code, err := newInviteCode()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if err := a.db.CreateInviteForUser(code, user.ID); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			a.render(w, "settings.html", a.settingsData(user, map[string]any{"Notice": "invite made"}))
+			return
+		}
 		emailNotice := ""
 		email := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
 		if email != "" && !strings.EqualFold(email, user.Email) {
 			if _, err := mail.ParseAddress(email); err != nil {
-				a.render(w, "settings.html", map[string]any{"User": user, "VAPIDPublic": a.cfg.VAPIDPublic, "Error": "email is not valid"})
+				a.render(w, "settings.html", a.settingsData(user, map[string]any{"Error": "email is not valid"}))
 				return
 			}
 			token, tokenHash, err := newToken()
@@ -176,14 +221,14 @@ func (a *App) settings(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if err := a.db.CreateEmailChangeToken(tokenHash, user.ID, email, time.Now().Add(30*time.Minute)); err != nil {
-				a.render(w, "settings.html", map[string]any{"User": user, "VAPIDPublic": a.cfg.VAPIDPublic, "Error": "email is already used"})
+				a.render(w, "settings.html", a.settingsData(user, map[string]any{"Error": "email is already used"}))
 				return
 			}
 			link := strings.TrimRight(a.cfg.BaseURL, "/") + "/auth/email?token=" + url.QueryEscape(token)
 			body := "confirm this email for igrec:\n\n" + link + "\n\nthis link expires in 30 minutes.\n"
 			err = (emailpkg.Resend{APIKey: a.cfg.ResendAPIKey, From: a.cfg.LoginEmailFrom}).SendPlain(email, "confirm igrec email", body)
 			if err != nil {
-				a.render(w, "settings.html", map[string]any{"User": user, "VAPIDPublic": a.cfg.VAPIDPublic, "Error": err.Error()})
+				a.render(w, "settings.html", a.settingsData(user, map[string]any{"Error": err.Error()}))
 				return
 			}
 			emailNotice = "check email to confirm"
@@ -194,8 +239,7 @@ func (a *App) settings(w http.ResponseWriter, r *http.Request) {
 		}
 		if emailNotice != "" {
 			user, _ = a.db.UserByUsername(user.Username)
-			count, _ := a.db.PasskeyCount(user.ID)
-			a.render(w, "settings.html", map[string]any{"User": user, "VAPIDPublic": a.cfg.VAPIDPublic, "Notice": emailNotice, "PasskeyCount": count})
+			a.render(w, "settings.html", a.settingsData(user, map[string]any{"Notice": emailNotice}))
 			return
 		}
 		http.Redirect(w, r, "/settings", http.StatusSeeOther)
@@ -233,6 +277,9 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 		if err := a.db.UseInvite(invite.Code, user.ID); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
+		}
+		if invite.InviterID.Valid {
+			_ = a.db.CreateUserFollow(user.ID, invite.InviterID.Int64)
 		}
 		if err := a.startSession(w, user.ID); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -333,12 +380,11 @@ func (a *App) adminInvites(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	token, _, err := newToken()
+	code, err := newInviteCode()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	code := strings.TrimRight(base64.RawURLEncoding.EncodeToString([]byte(token))[:22], "=")
 	if err := a.db.CreateInvite(code); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -452,6 +498,33 @@ func (a *App) render(w http.ResponseWriter, name string, data any) {
 	}
 }
 
+func (a *App) settingsData(user store.User, extra map[string]any) map[string]any {
+	data := map[string]any{"User": user, "VAPIDPublic": a.cfg.VAPIDPublic}
+	count, _ := a.db.PasskeyCount(user.ID)
+	data["PasskeyCount"] = count
+
+	invites, _ := a.db.InvitesByInviter(user.ID)
+	views := make([]inviteView, 0, len(invites))
+	for _, invite := range invites {
+		views = append(views, inviteView{
+			Code: invite.Code,
+			Link: strings.TrimRight(a.cfg.BaseURL, "/") + "/join?invite=" + url.QueryEscape(invite.Code),
+			Used: invite.UsedAt.Valid,
+		})
+	}
+	data["Invites"] = views
+	remaining := 3 - len(invites)
+	if remaining < 0 {
+		remaining = 0
+	}
+	data["InviteRemaining"] = remaining
+
+	for key, value := range extra {
+		data[key] = value
+	}
+	return data
+}
+
 func writeJSON(w http.ResponseWriter, contentType string, data any) {
 	w.Header().Set("Content-Type", contentType)
 	_ = json.NewEncoder(w).Encode(data)
@@ -502,6 +575,14 @@ func newToken() (string, string, error) {
 	}
 	token := base64.RawURLEncoding.EncodeToString(raw[:])
 	return token, hashToken(token), nil
+}
+
+func newInviteCode() (string, error) {
+	token, _, err := newToken()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimRight(base64.RawURLEncoding.EncodeToString([]byte(token))[:22], "="), nil
 }
 
 func hashToken(token string) string {
@@ -604,6 +685,94 @@ func profilePostViews(posts []store.Post, preference string) []postView {
 		})
 	}
 	return views
+}
+
+func archiveMonths(username string, posts []store.Post) []archiveMonth {
+	seen := make(map[string]int)
+	order := make([]string, 0)
+	for _, post := range posts {
+		key := post.CreatedAt.Format("2006/01")
+		if seen[key] == 0 {
+			order = append(order, key)
+		}
+		seen[key]++
+	}
+
+	months := make([]archiveMonth, 0, len(order))
+	for _, key := range order {
+		parts := strings.Split(key, "/")
+		months = append(months, archiveMonth{
+			Year:  parts[0],
+			Month: parts[1],
+			Href:  "/@" + url.PathEscape(username) + "/" + parts[0] + "/" + parts[1],
+			Label: parts[0] + "." + parts[1],
+			Count: seen[key],
+		})
+	}
+	return months
+}
+
+func filterArchivePosts(posts []store.Post, parts []string) ([]store.Post, string, bool) {
+	if len(parts) > 4 {
+		return nil, "", false
+	}
+	year, err := parseArchivePart(parts[1], 1, 9999)
+	if err != nil || len(parts[1]) != 4 {
+		return nil, "", false
+	}
+	month := 0
+	day := 0
+	if len(parts) > 2 {
+		month, err = parseArchivePart(parts[2], 1, 12)
+		if err != nil || len(parts[2]) != 2 {
+			return nil, "", false
+		}
+	}
+	if len(parts) > 3 {
+		day, err = parseArchivePart(parts[3], 1, 31)
+		if err != nil || len(parts[3]) != 2 {
+			return nil, "", false
+		}
+	}
+
+	var filtered []store.Post
+	for _, post := range posts {
+		if post.CreatedAt.Year() != year {
+			continue
+		}
+		if month != 0 && int(post.CreatedAt.Month()) != month {
+			continue
+		}
+		if day != 0 && post.CreatedAt.Day() != day {
+			continue
+		}
+		filtered = append(filtered, post)
+	}
+
+	title := parts[1]
+	if month != 0 {
+		title += "." + parts[2]
+	}
+	if day != 0 {
+		title += "." + parts[3]
+	}
+	return filtered, title, true
+}
+
+func parseArchivePart(value string, min, max int) (int, error) {
+	var parsed int
+	if _, err := fmt.Sscanf(value, "%d", &parsed); err != nil {
+		return 0, err
+	}
+	if parsed < min || parsed > max {
+		return 0, errors.New("archive date out of range")
+	}
+	return parsed, nil
+}
+
+func isArchiveYear(value string) bool {
+	_, err := parseArchivePart(value, 1, 9999)
+	return err == nil && len(value) == 4
 }
 
 func dayKey(t time.Time) string {
