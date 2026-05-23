@@ -44,6 +44,8 @@ During beta, the nudge uses the newest word from someone else; once local follow
 - Settings shell at `/settings`
 - Invite-only user registration at `/join`
 - Magic-link login at `/login`
+- Passkey registration from `/settings`
+- Passkey login from `/login`
 - Server-side one-word validation with Unicode support
 - Daily email opt-in in settings
 - Daily email nudge command and production timer

@@ -23,8 +23,8 @@ Done when:
 - [x] Add magic-link login through Resend.
 - [x] Make `/write` require login.
 - [x] Make inbound email posting map to a real user email.
-- [ ] Let logged-in users create and manage passkeys.
-- [ ] Let users sign in with passkeys after their first magic-link login.
+- [beta] Let logged-in users create passkeys.
+- [beta] Let users sign in with passkeys after their first magic-link login.
 - [ ] Replace beta admin invite endpoint with a real operator UI.
 - [ ] Add CSRF protection for session-backed form posts.
 

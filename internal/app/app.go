@@ -65,6 +65,10 @@ func New(cfg Config, db *store.DB) http.Handler {
 	mux.HandleFunc("/logout", app.logout)
 	mux.HandleFunc("/auth/magic", app.magic)
 	mux.HandleFunc("/auth/email", app.confirmEmail)
+	mux.HandleFunc("/auth/passkeys/register/options", app.passkeyRegisterOptions)
+	mux.HandleFunc("/auth/passkeys/register", app.passkeyRegister)
+	mux.HandleFunc("/auth/passkeys/login/options", app.passkeyLoginOptions)
+	mux.HandleFunc("/auth/passkeys/login", app.passkeyLogin)
 	mux.HandleFunc("/write", app.write)
 	mux.HandleFunc("/settings", app.settings)
 	mux.HandleFunc("/admin/invites", app.adminInvites)
@@ -156,7 +160,8 @@ func (a *App) settings(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		a.render(w, "settings.html", map[string]any{"User": user, "VAPIDPublic": a.cfg.VAPIDPublic})
+		count, _ := a.db.PasskeyCount(user.ID)
+		a.render(w, "settings.html", map[string]any{"User": user, "VAPIDPublic": a.cfg.VAPIDPublic, "PasskeyCount": count})
 	case http.MethodPost:
 		emailNotice := ""
 		email := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
@@ -189,7 +194,8 @@ func (a *App) settings(w http.ResponseWriter, r *http.Request) {
 		}
 		if emailNotice != "" {
 			user, _ = a.db.UserByUsername(user.Username)
-			a.render(w, "settings.html", map[string]any{"User": user, "VAPIDPublic": a.cfg.VAPIDPublic, "Notice": emailNotice})
+			count, _ := a.db.PasskeyCount(user.ID)
+			a.render(w, "settings.html", map[string]any{"User": user, "VAPIDPublic": a.cfg.VAPIDPublic, "Notice": emailNotice, "PasskeyCount": count})
 			return
 		}
 		http.Redirect(w, r, "/settings", http.StatusSeeOther)

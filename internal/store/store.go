@@ -2,11 +2,14 @@ package store
 
 import (
 	"database/sql"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/go-webauthn/webauthn/webauthn"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -45,6 +48,14 @@ type Invite struct {
 type DailyEmailCandidate struct {
 	User User
 	Post sql.Null[Post]
+}
+
+type WebAuthnSession struct {
+	ID        string
+	UserID    sql.NullInt64
+	Kind      string
+	Data      []byte
+	ExpiresAt time.Time
 }
 
 func Open(databaseURL string) (*DB, error) {
@@ -113,6 +124,22 @@ create table if not exists email_change_tokens (
   expires_at datetime not null,
   used_at datetime
 );
+create table if not exists passkeys (
+  credential_id text primary key,
+  user_id integer not null references users(id),
+  name text not null default 'passkey',
+  credential_json text not null,
+  created_at datetime not null default current_timestamp,
+  last_used_at datetime
+);
+create table if not exists webauthn_sessions (
+  id text primary key,
+  user_id integer references users(id),
+  kind text not null,
+  data text not null,
+  created_at datetime not null default current_timestamp,
+  expires_at datetime not null
+);
 create table if not exists posts (
   id integer primary key autoincrement,
   user_id integer not null references users(id),
@@ -126,6 +153,8 @@ create unique index if not exists users_email_unique_idx on users(email) where e
 create index if not exists sessions_user_idx on sessions(user_id);
 create index if not exists login_tokens_user_idx on login_tokens(user_id);
 create index if not exists email_change_tokens_user_idx on email_change_tokens(user_id);
+create index if not exists passkeys_user_idx on passkeys(user_id);
+create index if not exists webauthn_sessions_expires_idx on webauthn_sessions(expires_at);
 create table if not exists follows (
   id integer primary key autoincrement,
   follower_actor text not null,
@@ -423,6 +452,94 @@ limit ?`, sentOn, limit)
 func (db *DB) MarkDailyEmailSent(userID int64, sentOn string) error {
 	_, err := db.Exec(`insert or ignore into daily_email_sends(user_id, sent_on) values(?, ?)`, userID, sentOn)
 	return err
+}
+
+func (db *DB) PasskeyCredentialsByUser(userID int64) ([]webauthn.Credential, error) {
+	rows, err := db.Query(`select credential_json from passkeys where user_id = ? order by created_at asc`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var credentials []webauthn.Credential
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			return nil, err
+		}
+		var credential webauthn.Credential
+		if err := json.Unmarshal([]byte(raw), &credential); err != nil {
+			return nil, err
+		}
+		credentials = append(credentials, credential)
+	}
+	return credentials, rows.Err()
+}
+
+func (db *DB) SavePasskey(userID int64, name string, credential webauthn.Credential) error {
+	raw, err := json.Marshal(credential)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(name) == "" {
+		name = "passkey"
+	}
+	_, err = db.Exec(`insert into passkeys(credential_id, user_id, name, credential_json) values(?, ?, ?, ?)`, passkeyID(credential.ID), userID, strings.TrimSpace(name), string(raw))
+	return err
+}
+
+func (db *DB) UpdatePasskeyCredential(credential webauthn.Credential) error {
+	raw, err := json.Marshal(credential)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec(`update passkeys set credential_json = ?, last_used_at = current_timestamp where credential_id = ?`, string(raw), passkeyID(credential.ID))
+	return err
+}
+
+func (db *DB) UserByPasskeyID(rawID []byte) (User, error) {
+	var user User
+	err := db.QueryRow(`
+select users.id, users.username, users.domain, users.email, users.fediverse_acct, users.email_opt_in, users.timestamp_preference, users.migration_target, users.created_at
+from passkeys join users on users.id = passkeys.user_id
+where passkeys.credential_id = ?`, passkeyID(rawID)).
+		Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt)
+	user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
+	return user, err
+}
+
+func (db *DB) PasskeyCount(userID int64) (int, error) {
+	var count int
+	err := db.QueryRow(`select count(*) from passkeys where user_id = ?`, userID).Scan(&count)
+	return count, err
+}
+
+func (db *DB) CreateWebAuthnSession(id string, userID sql.NullInt64, kind string, data []byte, expiresAt time.Time) error {
+	_, err := db.Exec(`insert into webauthn_sessions(id, user_id, kind, data, expires_at) values(?, ?, ?, ?, ?)`, id, userID, kind, string(data), expiresAt.UTC())
+	return err
+}
+
+func (db *DB) UseWebAuthnSession(id, kind string) (WebAuthnSession, error) {
+	tx, err := db.Begin()
+	if err != nil {
+		return WebAuthnSession{}, err
+	}
+	defer tx.Rollback()
+
+	var session WebAuthnSession
+	err = tx.QueryRow(`select id, user_id, kind, data, expires_at from webauthn_sessions where id = ? and kind = ? and expires_at > current_timestamp`, id, kind).
+		Scan(&session.ID, &session.UserID, &session.Kind, &session.Data, &session.ExpiresAt)
+	if err != nil {
+		return WebAuthnSession{}, err
+	}
+	if _, err := tx.Exec(`delete from webauthn_sessions where id = ?`, id); err != nil {
+		return WebAuthnSession{}, err
+	}
+	return session, tx.Commit()
+}
+
+func passkeyID(rawID []byte) string {
+	return base64.RawURLEncoding.EncodeToString(rawID)
 }
 
 func (db *DB) CreatePost(userID int64, value string, imageURL *string) (Post, error) {
