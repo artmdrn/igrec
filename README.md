@@ -36,8 +36,16 @@ go run ./cmd/igrec send-daily-email
 Production runs this through `igrec-daily-email.timer` at 08:20 Europe/Paris.
 During beta, the nudge uses the newest word from someone else; once local follow relationships exist, the same job should narrow that source to followed accounts.
 
+## API and export
+
+Public archives are available as JSON at `/api/@username/words`. The endpoint does not require authentication and returns the user's words, canonical URLs, image URLs when present, timestamps, and timestamp display preference.
+
+Logged-in users can download a one-click JSON export from `/settings/export`. It includes profile metadata, words, and an ActivityPub-flavored actor/outbox snapshot.
+
 ## Implemented foundation
 
+- Health check at `/healthz`
+- Public archive API at `/api/@username/words`
 - Public firehose at `/`
 - User archive at `/@username`
 - Write form at `/write`
@@ -46,6 +54,7 @@ During beta, the nudge uses the newest word from someone else; once local follow
 - Magic-link login at `/login`
 - Passkey registration from `/settings`
 - Passkey login from `/login`
+- One-click JSON export from `/settings/export`
 - Server-side one-word validation with Unicode support
 - Daily email opt-in in settings
 - Daily email nudge command and production timer
@@ -62,7 +71,7 @@ During beta, the nudge uses the newest word from someone else; once local follow
 - Real image upload storage
 - Signed ActivityPub delivery to follower inboxes
 - VAPID subscription storage and push delivery
-- Settings mutations, export, migration, and delete flows
+- Settings migration and delete flows
 - CSRF protection for session-backed forms
 
 ## Cloudflare setup

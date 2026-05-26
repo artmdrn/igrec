@@ -636,6 +636,10 @@ func (db *DB) PostsByUser(username string, limit int) ([]Post, error) {
 	return db.posts(`where users.username = ?`, limit, username)
 }
 
+func (db *DB) AllPostsByUser(username string) ([]Post, error) {
+	return db.postsWithoutLimit(`where users.username = ?`, username)
+}
+
 func (db *DB) posts(where string, limit int, args ...any) ([]Post, error) {
 	args = append(args, limit)
 	rows, err := db.Query(fmt.Sprintf(`
@@ -644,6 +648,28 @@ from posts join users on users.id = posts.user_id
 %s
 order by posts.created_at desc, posts.id desc
 limit ?`, where), args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var posts []Post
+	for rows.Next() {
+		var post Post
+		if err := rows.Scan(&post.ID, &post.UserID, &post.Username, &post.Word, &post.ImageURL, &post.CreatedAt); err != nil {
+			return nil, err
+		}
+		posts = append(posts, post)
+	}
+	return posts, rows.Err()
+}
+
+func (db *DB) postsWithoutLimit(where string, args ...any) ([]Post, error) {
+	rows, err := db.Query(fmt.Sprintf(`
+select posts.id, posts.user_id, users.username, posts.word, posts.image_url, posts.created_at
+from posts join users on users.id = posts.user_id
+%s
+order by posts.created_at desc, posts.id desc`, where), args...)
 	if err != nil {
 		return nil, err
 	}
