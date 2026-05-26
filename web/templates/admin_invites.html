@@ -2,6 +2,7 @@
 <main class="settings">
   <form method="post" action="/admin/invites">
     {{if .InviteLink}}<p class="notice">{{.InviteLink}}</p>{{end}}
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
     <label>secret <input name="secret" type="password" required></label>
     <button type="submit">make invite</button>
   </form>

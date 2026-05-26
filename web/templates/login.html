@@ -4,6 +4,7 @@
   <button type="button" data-passkey="login">passkey</button>
   <form method="post" action="/login">
     {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
     <input type="hidden" name="next" value="{{.Next}}">
     <label>email <input type="email" name="email" value="{{.Email}}" autocomplete="email" required></label>
     <button type="submit">send link</button>

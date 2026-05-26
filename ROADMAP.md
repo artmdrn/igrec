@@ -6,7 +6,7 @@ This roadmap is ordered so each step leaves the service more real without turnin
 
 - Replace demo-only posting with a real current-user boundary, even before full auth.
 - Add structured config validation on boot for production-required variables.
-- Add a health endpoint for uptime checks.
+- [x] Add a health endpoint for uptime checks.
 - Add basic request logging and error logs that do not leak secrets.
 - Add a deployment checklist for Oracle, Cloudflare, Resend, and GitHub.
 
@@ -26,7 +26,7 @@ Done when:
 - [beta] Let logged-in users create passkeys.
 - [beta] Let users sign in with passkeys after their first magic-link login.
 - [ ] Replace beta admin invite endpoint with a real operator UI.
-- [ ] Add CSRF protection for session-backed form posts.
+- [x] Add CSRF protection for session-backed form posts.
 
 Done when:
 
@@ -83,8 +83,8 @@ Done when:
 
 ## Phase 5: Portability And Settings
 
-- Add one-click JSON export.
-- Add ActivityPub-flavored export.
+- [x] Add one-click JSON export.
+- [x] Add ActivityPub-flavored export.
 - Add account migration UI.
 - Add delete-account flow with confirmation.
 - Add settings for fediverse handle, rel=me links, email preferences, export, migration, and deletion.
@@ -134,7 +134,7 @@ These are deliberately parked until the beta loop is stable. They should not be 
 ### Public API
 
 - Add a public REST API for reading and authenticated client posting.
-- `GET /api/@username/words` returns a user's full word archive as JSON.
+- [x] `GET /api/@username/words` returns a user's full word archive as JSON.
 - `POST /api/words` creates a new word for the authenticated user.
 - Enforce the same one-word validation server-side as web, email, and ActivityPub.
 - Support optional image attachment or image URL according to the production upload policy.

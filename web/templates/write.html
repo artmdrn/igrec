@@ -2,6 +2,7 @@
 <main class="write">
   <form method="post" action="/write" enctype="multipart/form-data">
     {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
     <input name="word" value="{{.Word}}" maxlength="50" autocomplete="off" autofocus required aria-label="word">
     <input name="image_url" type="url" placeholder="image url" aria-label="image url">
     <button type="submit">post</button>

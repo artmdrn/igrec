@@ -3,6 +3,7 @@
   <form method="post" action="/settings">
     {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
     {{if .Notice}}<p class="notice">{{.Notice}}</p>{{end}}
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
     <label>email <input type="email" name="email" value="{{.User.Email}}" autocomplete="email"></label>
     <label><input type="checkbox" name="daily" {{if .User.EmailOptIn}}checked{{end}}> daily word</label>
     <label>fediverse <input name="fediverse" placeholder="@you@example.social"></label>
@@ -24,7 +25,7 @@
       <button type="submit" name="action" value="invite">make invite</button>
     {{end}}
     <a class="button" href="/logout">logout</a>
-    <button type="button">export</button>
+    <a class="button" href="/settings/export">export</a>
     <button type="button">migrate</button>
     <button type="button" class="danger">delete</button>
   </form>
