@@ -8,6 +8,7 @@ User=igrec
 Group=igrec
 WorkingDirectory=/opt/igrec/src
 EnvironmentFile=/opt/igrec/.env
+Environment=UPLOAD_DIR=/opt/igrec/data/uploads
 ExecStart=/opt/igrec/bin/igrec
 Restart=always
 RestartSec=3
