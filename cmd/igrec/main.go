@@ -13,10 +13,10 @@ import (
 
 func main() {
 	cfg := app.Config{
-		BaseURL:      env("BASE_URL", "http://localhost:8080"),
-		Addr:         env("ADDR", ":8080"),
-		DatabaseURL:  env("DATABASE_URL", "sqlite://igrec.db"),
-		AppSecret:    os.Getenv("APP_SECRET"),
+		BaseURL:     env("BASE_URL", "http://localhost:8080"),
+		Addr:        env("ADDR", ":8080"),
+		DatabaseURL: env("DATABASE_URL", "sqlite://igrec.db"),
+		AppSecret:   os.Getenv("APP_SECRET"),
 		OperatorEmails: splitCSV(
 			os.Getenv("OPERATOR_EMAILS"),
 		),

@@ -12,6 +12,7 @@ import (
 	"html/template"
 	"image"
 	"image/jpeg"
+	_ "image/png"
 	"io"
 	"math"
 	"mime/multipart"
@@ -24,7 +25,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	_ "image/png"
 
 	"igrec.net/igrec/internal/activitypub"
 	emailpkg "igrec.net/igrec/internal/email"
