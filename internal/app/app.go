@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -9,12 +10,21 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"image"
+	"image/jpeg"
+	"io"
+	"math"
+	"mime/multipart"
 	"net/http"
 	"net/mail"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
+	_ "image/png"
 
 	"igrec.net/igrec/internal/activitypub"
 	emailpkg "igrec.net/igrec/internal/email"
@@ -28,6 +38,7 @@ type Config struct {
 	DatabaseURL    string
 	AppSecret      string
 	OperatorEmails []string
+	UploadDir      string
 	ResendAPIKey   string
 	LoginEmailFrom string
 	DailyEmailFrom string
@@ -73,6 +84,7 @@ type apiPostView struct {
 const sessionCookie = "igrec_session"
 const csrfCookie = "igrec_csrf"
 const csrfField = "csrf_token"
+const maxUploadBytes = 8 << 20
 
 var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9_]{1,32}$`)
 
@@ -92,6 +104,7 @@ func New(cfg Config, db *store.DB) http.Handler {
 
 	mux := http.NewServeMux()
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static"))))
+	mux.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir(cfg.UploadDir))))
 	mux.HandleFunc("/", app.route)
 	mux.HandleFunc("/healthz", app.healthz)
 	mux.HandleFunc("/api/", app.api)
@@ -231,14 +244,34 @@ func (a *App) write(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
+		r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes+2<<20)
 		value, err := word.Normalize(r.FormValue("word"))
 		if err != nil {
 			a.render(w, "write.html", a.withCSRF(w, r, map[string]any{"Error": err.Error(), "Word": r.FormValue("word")}))
 			return
 		}
 		var imageURL *string
-		if raw := strings.TrimSpace(r.FormValue("image_url")); raw != "" {
-			imageURL = &raw
+		imageFile, imageHeader, err := r.FormFile("image_file")
+		if err == nil {
+			defer imageFile.Close()
+			focusObject := r.FormValue("focus_object") == "on"
+			focusX := parseUnitFloat(r.FormValue("focus_x"), 0.5)
+			focusY := parseUnitFloat(r.FormValue("focus_y"), 0.5)
+			uploaded, uploadErr := a.saveUploadedImage(imageFile, imageHeader, focusObject, focusX, focusY)
+			if uploadErr != nil {
+				a.render(w, "write.html", a.withCSRF(w, r, map[string]any{
+					"Error": uploadErr.Error(),
+					"Word":  r.FormValue("word"),
+				}))
+				return
+			}
+			imageURL = &uploaded
+		} else if !errors.Is(err, http.ErrMissingFile) {
+			a.render(w, "write.html", a.withCSRF(w, r, map[string]any{
+				"Error": "image upload failed",
+				"Word":  r.FormValue("word"),
+			}))
+			return
 		}
 		post, err := a.db.CreatePost(user.ID, value, imageURL)
 		if err != nil {
@@ -249,6 +282,138 @@ func (a *App) write(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func parseUnitFloat(raw string, fallback float64) float64 {
+	value, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil || math.IsNaN(value) || math.IsInf(value, 0) {
+		return fallback
+	}
+	if value < 0 {
+		return 0
+	}
+	if value > 1 {
+		return 1
+	}
+	return value
+}
+
+func (a *App) saveUploadedImage(file io.Reader, header *multipart.FileHeader, focusObject bool, focusX, focusY float64) (string, error) {
+	if header.Size > maxUploadBytes {
+		return "", errors.New("image must be 8MB or smaller")
+	}
+	raw, err := io.ReadAll(io.LimitReader(file, maxUploadBytes+1))
+	if err != nil {
+		return "", errors.New("could not read image")
+	}
+	if int64(len(raw)) > maxUploadBytes {
+		return "", errors.New("image must be 8MB or smaller")
+	}
+	contentType := http.DetectContentType(raw)
+	if contentType != "image/jpeg" && contentType != "image/png" {
+		return "", errors.New("only JPEG and PNG are supported")
+	}
+	img, _, err := image.Decode(bytes.NewReader(raw))
+	if err != nil {
+		return "", errors.New("invalid image file")
+	}
+	bounds := img.Bounds()
+	if bounds.Dx() < 24 || bounds.Dy() < 24 {
+		return "", errors.New("image is too small")
+	}
+	if focusObject {
+		img = cropSquareAroundFocus(img, focusX, focusY)
+	}
+	img = downscaleWithin(img, 1440)
+	token, _, err := newToken()
+	if err != nil {
+		return "", errors.New("could not store image")
+	}
+	if err := os.MkdirAll(a.cfg.UploadDir, 0o755); err != nil {
+		return "", errors.New("could not store image")
+	}
+	filename := token[:20] + ".jpg"
+	target := filepath.Join(a.cfg.UploadDir, filename)
+	out, err := os.Create(target)
+	if err != nil {
+		return "", errors.New("could not store image")
+	}
+	defer out.Close()
+	if err := jpeg.Encode(out, img, &jpeg.Options{Quality: 86}); err != nil {
+		return "", errors.New("could not store image")
+	}
+	url := "/uploads/" + filename
+	return url, nil
+}
+
+func cropSquareAroundFocus(img image.Image, focusX, focusY float64) image.Image {
+	b := img.Bounds()
+	w := b.Dx()
+	h := b.Dy()
+	size := w
+	if h < size {
+		size = h
+	}
+	cx := int(focusX * float64(w))
+	cy := int(focusY * float64(h))
+	left := cx - size/2
+	top := cy - size/2
+	if left < 0 {
+		left = 0
+	}
+	if top < 0 {
+		top = 0
+	}
+	if left+size > w {
+		left = w - size
+	}
+	if top+size > h {
+		top = h - size
+	}
+	rect := image.Rect(b.Min.X+left, b.Min.Y+top, b.Min.X+left+size, b.Min.Y+top+size)
+	dst := image.NewRGBA(image.Rect(0, 0, size, size))
+	for y := 0; y < size; y++ {
+		for x := 0; x < size; x++ {
+			dst.Set(x, y, img.At(rect.Min.X+x, rect.Min.Y+y))
+		}
+	}
+	return dst
+}
+
+func downscaleWithin(img image.Image, maxEdge int) image.Image {
+	b := img.Bounds()
+	w := b.Dx()
+	h := b.Dy()
+	if w <= maxEdge && h <= maxEdge {
+		return img
+	}
+	scale := float64(maxEdge) / float64(w)
+	if h > w {
+		scale = float64(maxEdge) / float64(h)
+	}
+	nw := int(float64(w) * scale)
+	nh := int(float64(h) * scale)
+	if nw < 1 {
+		nw = 1
+	}
+	if nh < 1 {
+		nh = 1
+	}
+	dst := image.NewRGBA(image.Rect(0, 0, nw, nh))
+	for y := 0; y < nh; y++ {
+		sy := b.Min.Y + int(float64(y)/scale)
+		if sy >= b.Max.Y {
+			sy = b.Max.Y - 1
+		}
+		for x := 0; x < nw; x++ {
+			sx := b.Min.X + int(float64(x)/scale)
+			if sx >= b.Max.X {
+				sx = b.Max.X - 1
+			}
+			dst.Set(x, y, img.At(sx, sy))
+		}
+	}
+	return dst
 }
 
 func (a *App) settings(w http.ResponseWriter, r *http.Request) {

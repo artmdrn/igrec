@@ -68,11 +68,18 @@ Logged-in users can download a one-click JSON export from `/settings/export`. It
 
 - IndieAuth and Mastodon OAuth
 - Configure operator accounts with `OPERATOR_EMAILS`
-- Real image upload storage
 - Signed ActivityPub delivery to follower inboxes
 - VAPID subscription storage and push delivery
 - Settings migration and delete flows
-- CSRF protection for session-backed forms
+
+## Image uploads
+
+`/write` supports JPEG/PNG uploads with a conservative policy:
+
+- Max upload size: 8MB
+- Accepted types: `image/jpeg`, `image/png`
+- Stored as optimized JPEG under `UPLOAD_DIR` and served at `/uploads/...`
+- Optional "focus on object" square crop for Instagram-like framing
 
 ## Cloudflare setup
 

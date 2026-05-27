@@ -20,6 +20,7 @@ func main() {
 		OperatorEmails: splitCSV(
 			os.Getenv("OPERATOR_EMAILS"),
 		),
+		UploadDir:    env("UPLOAD_DIR", "data/uploads"),
 		ResendAPIKey: os.Getenv("RESEND_API_KEY"),
 		LoginEmailFrom: envFallback(
 			[]string{"LOGIN_EMAIL_FROM", "EMAIL_FROM"},
