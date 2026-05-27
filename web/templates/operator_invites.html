@@ -1,0 +1,14 @@
+{{template "head" .}}
+<main class="settings">
+  <form method="post" action="/operator/invites">
+    {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+    {{if .Notice}}<p class="notice">{{.Notice}}</p>{{end}}
+    {{if .InviteLink}}<p class="notice">{{.InviteLink}}</p>{{end}}
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    <button type="submit">make invite</button>
+    {{range .Invites}}
+      <p class="notice">{{if .Used}}used {{end}}{{.Link}}</p>
+    {{end}}
+  </form>
+</main>
+{{template "foot" .}}

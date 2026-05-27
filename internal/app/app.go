@@ -27,6 +27,7 @@ type Config struct {
 	Addr           string
 	DatabaseURL    string
 	AppSecret      string
+	OperatorEmails []string
 	ResendAPIKey   string
 	LoginEmailFrom string
 	DailyEmailFrom string
@@ -35,9 +36,10 @@ type Config struct {
 }
 
 type App struct {
-	cfg       Config
-	db        *store.DB
-	templates *template.Template
+	cfg            Config
+	db             *store.DB
+	templates      *template.Template
+	operatorEmails map[string]struct{}
 }
 
 type postView struct {
@@ -76,9 +78,16 @@ var usernamePattern = regexp.MustCompile(`^[A-Za-z0-9_]{1,32}$`)
 
 func New(cfg Config, db *store.DB) http.Handler {
 	app := &App{
-		cfg:       cfg,
-		db:        db,
-		templates: template.Must(template.ParseGlob("web/templates/*.html")),
+		cfg:            cfg,
+		db:             db,
+		templates:      template.Must(template.ParseGlob("web/templates/*.html")),
+		operatorEmails: make(map[string]struct{}),
+	}
+	for _, email := range cfg.OperatorEmails {
+		normalized := strings.ToLower(strings.TrimSpace(email))
+		if normalized != "" {
+			app.operatorEmails[normalized] = struct{}{}
+		}
 	}
 
 	mux := http.NewServeMux()
@@ -98,6 +107,7 @@ func New(cfg Config, db *store.DB) http.Handler {
 	mux.HandleFunc("/write", app.write)
 	mux.HandleFunc("/settings", app.settings)
 	mux.HandleFunc("/settings/export", app.export)
+	mux.HandleFunc("/operator/invites", app.operatorInvites)
 	mux.HandleFunc("/admin/invites", app.adminInvites)
 	mux.HandleFunc("/inbound/email", app.inboundEmail)
 	mux.HandleFunc("/.well-known/webfinger", app.webfinger)
@@ -485,16 +495,47 @@ func (a *App) logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) adminInvites(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/operator/invites", http.StatusSeeOther)
+}
+
+func (a *App) operatorInvites(w http.ResponseWriter, r *http.Request) {
+	user, ok := a.currentUser(r)
+	if !ok {
+		a.requireLogin(w, r)
+		return
+	}
+	if _, ok := a.operatorEmails[strings.ToLower(user.Email)]; !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	render := func(extra map[string]any) {
+		invites, err := a.db.RecentInvites(25)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		views := make([]inviteView, 0, len(invites))
+		for _, invite := range invites {
+			views = append(views, inviteView{
+				Code: invite.Code,
+				Link: strings.TrimRight(a.cfg.BaseURL, "/") + "/join?invite=" + url.QueryEscape(invite.Code),
+				Used: invite.UsedAt.Valid,
+			})
+		}
+		data := map[string]any{"Invites": views}
+		for key, value := range extra {
+			data[key] = value
+		}
+		a.render(w, "operator_invites.html", a.withCSRF(w, r, data))
+	}
+
 	if r.Method != http.MethodPost {
-		a.render(w, "admin_invites.html", a.withCSRF(w, r, nil))
+		render(nil)
 		return
 	}
 	if !a.validCSRF(r) {
 		http.Error(w, "forbidden", http.StatusForbidden)
-		return
-	}
-	if a.cfg.AppSecret == "" || subtle.ConstantTimeCompare([]byte(r.FormValue("secret")), []byte(a.cfg.AppSecret)) != 1 {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 	code, err := newInviteCode()
@@ -507,7 +548,7 @@ func (a *App) adminInvites(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	link := strings.TrimRight(a.cfg.BaseURL, "/") + "/join?invite=" + url.QueryEscape(code)
-	a.render(w, "admin_invites.html", a.withCSRF(w, r, map[string]any{"InviteLink": link}))
+	render(map[string]any{"InviteLink": link, "Notice": "invite made"})
 }
 
 func (a *App) inboundEmail(w http.ResponseWriter, r *http.Request) {

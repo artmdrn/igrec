@@ -21,7 +21,7 @@ Open `http://localhost:8080`.
 
 ## Users
 
-Registration is invite-only. During beta, operators can create one invite at `/admin/invites` by posting `secret=<APP_SECRET>`. The result is a `/join?invite=...` link.
+Registration is invite-only. Operators can create invites at `/operator/invites` after logging in with an email listed in `OPERATOR_EMAILS`. The result is a `/join?invite=...` link.
 
 Users sign in by magic link through `/login`; no passwords are stored. `/write` and `/settings` require a session.
 
@@ -67,7 +67,7 @@ Logged-in users can download a one-click JSON export from `/settings/export`. It
 ## Still needed before production
 
 - IndieAuth and Mastodon OAuth
-- Real operator invite UI
+- Configure operator accounts with `OPERATOR_EMAILS`
 - Real image upload storage
 - Signed ActivityPub delivery to follower inboxes
 - VAPID subscription storage and push delivery

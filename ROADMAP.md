@@ -25,7 +25,7 @@ Done when:
 - [x] Make inbound email posting map to a real user email.
 - [beta] Let logged-in users create passkeys.
 - [beta] Let users sign in with passkeys after their first magic-link login.
-- [ ] Replace beta admin invite endpoint with a real operator UI.
+- [x] Replace beta admin invite endpoint with a real operator UI.
 - [x] Add CSRF protection for session-backed form posts.
 
 Done when:

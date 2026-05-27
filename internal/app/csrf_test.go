@@ -1,12 +1,14 @@
 package app
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 	"html/template"
 
 	"igrec.net/igrec/internal/store"
@@ -33,6 +35,7 @@ func testApp(t *testing.T) *App {
 		cfg: Config{BaseURL: "http://localhost:8080"},
 		db:  db,
 		templates: tmpl,
+		operatorEmails: map[string]struct{}{},
 	}
 }
 
@@ -80,4 +83,100 @@ func TestLoginPostAcceptsValidCSRF(t *testing.T) {
 	if wPost.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, wPost.Code)
 	}
+}
+
+func TestOperatorInvitesRequiresLogin(t *testing.T) {
+	a := testApp(t)
+	req := httptest.NewRequest(http.MethodGet, "/operator/invites", nil)
+	w := httptest.NewRecorder()
+
+	a.operatorInvites(w, req)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("expected status %d, got %d", http.StatusSeeOther, w.Code)
+	}
+}
+
+func TestOperatorInvitesRequiresOperatorEmail(t *testing.T) {
+	a := testApp(t)
+	user, err := a.db.CreateUser("member", "member@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionToken, sessionHash, err := newToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.CreateSession(sessionHash, user.ID, farFuture()); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/operator/invites", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookie, Value: sessionToken})
+	w := httptest.NewRecorder()
+	a.operatorInvites(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected status %d, got %d", http.StatusForbidden, w.Code)
+	}
+}
+
+func TestOperatorInvitesCreatesInvite(t *testing.T) {
+	a := testApp(t)
+	user, err := a.db.CreateUser("operator", "operator@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.operatorEmails[strings.ToLower(user.Email)] = struct{}{}
+	sessionToken, sessionHash, err := newToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.CreateSession(sessionHash, user.ID, farFuture()); err != nil {
+		t.Fatal(err)
+	}
+
+	wGet := httptest.NewRecorder()
+	reqGet := httptest.NewRequest(http.MethodGet, "/operator/invites", nil)
+	reqGet.AddCookie(&http.Cookie{Name: sessionCookie, Value: sessionToken})
+	a.operatorInvites(wGet, reqGet)
+
+	csrf := cookieByName(wGet.Result(), csrfCookie)
+	if csrf == nil || csrf.Value == "" {
+		t.Fatal("expected csrf cookie from GET /operator/invites")
+	}
+
+	form := url.Values{}
+	form.Set(csrfField, csrf.Value)
+	reqPost := httptest.NewRequest(http.MethodPost, "/operator/invites", strings.NewReader(form.Encode()))
+	reqPost.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	reqPost.AddCookie(&http.Cookie{Name: sessionCookie, Value: sessionToken})
+	reqPost.AddCookie(csrf)
+	wPost := httptest.NewRecorder()
+	a.operatorInvites(wPost, reqPost)
+
+	if wPost.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, wPost.Code)
+	}
+
+	body, err := io.ReadAll(wPost.Result().Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "/join?invite=") {
+		t.Fatalf("expected invite link in response body, got %q", string(body))
+	}
+}
+
+func cookieByName(resp *http.Response, name string) *http.Cookie {
+	for _, c := range resp.Cookies() {
+		if c.Name == name {
+			return c
+		}
+	}
+	return nil
+}
+
+func farFuture() (at time.Time) {
+	return time.Now().Add(24 * time.Hour)
 }

@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"igrec.net/igrec/internal/app"
@@ -16,6 +17,9 @@ func main() {
 		Addr:         env("ADDR", ":8080"),
 		DatabaseURL:  env("DATABASE_URL", "sqlite://igrec.db"),
 		AppSecret:    os.Getenv("APP_SECRET"),
+		OperatorEmails: splitCSV(
+			os.Getenv("OPERATOR_EMAILS"),
+		),
 		ResendAPIKey: os.Getenv("RESEND_API_KEY"),
 		LoginEmailFrom: envFallback(
 			[]string{"LOGIN_EMAIL_FROM", "EMAIL_FROM"},
@@ -77,4 +81,19 @@ func envFallback(keys []string, fallback string) string {
 		}
 	}
 	return fallback
+}
+
+func splitCSV(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			values = append(values, part)
+		}
+	}
+	return values
 }

@@ -317,6 +317,26 @@ func (db *DB) InviteCountByInviter(inviterID int64) (int, error) {
 	return count, err
 }
 
+func (db *DB) RecentInvites(limit int) ([]Invite, error) {
+	if limit <= 0 {
+		limit = 25
+	}
+	rows, err := db.Query(`select code, inviter_id, used_by, created_at, used_at from invites order by created_at desc limit ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var invites []Invite
+	for rows.Next() {
+		var invite Invite
+		if err := rows.Scan(&invite.Code, &invite.InviterID, &invite.UsedBy, &invite.CreatedAt, &invite.UsedAt); err != nil {
+			return nil, err
+		}
+		invites = append(invites, invite)
+	}
+	return invites, rows.Err()
+}
+
 func (db *DB) UseInvite(code string, userID int64) error {
 	res, err := db.Exec(`update invites set used_by = ?, used_at = current_timestamp where code = ? and used_at is null`, userID, code)
 	if err != nil {
