@@ -57,6 +57,8 @@ type postView struct {
 	store.Post
 	DisplayTime string
 	MachineTime string
+	HasImage    bool
+	CaptionCSS  string
 }
 
 type archiveMonth struct {
@@ -196,7 +198,7 @@ func (a *App) firehose(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	a.render(w, "index.html", map[string]any{"Posts": posts})
+	a.render(w, "index.html", map[string]any{"Posts": a.styledPostViews(posts, "datetime")})
 }
 
 func (a *App) profile(w http.ResponseWriter, r *http.Request) {
@@ -226,7 +228,7 @@ func (a *App) profile(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	a.render(w, "profile.html", map[string]any{"User": user, "Posts": profilePostViews(posts, user.TimestampPreference), "Months": months, "Title": title})
+	a.render(w, "profile.html", map[string]any{"User": user, "Posts": a.styledPostViews(posts, user.TimestampPreference), "Months": months, "Title": title})
 }
 
 func (a *App) write(w http.ResponseWriter, r *http.Request) {
@@ -1083,9 +1085,185 @@ func profilePostViews(posts []store.Post, preference string) []postView {
 			Post:        post,
 			DisplayTime: displayTime(post.CreatedAt, preference, counts[dayKey(post.CreatedAt)]),
 			MachineTime: post.CreatedAt.Format(time.RFC3339),
+			HasImage:    post.ImageURL.Valid && strings.TrimSpace(post.ImageURL.String) != "",
 		})
 	}
 	return views
+}
+
+func (a *App) styledPostViews(posts []store.Post, preference string) []postView {
+	views := profilePostViews(posts, preference)
+	for i := range views {
+		if !views[i].HasImage {
+			continue
+		}
+		views[i].CaptionCSS = a.captionStyleForPost(views[i].Post)
+	}
+	return views
+}
+
+func (a *App) captionStyleForPost(post store.Post) string {
+	accent := "#ffd460"
+	text := "#ffffff"
+	if value, ok := a.imagePalette(post.ImageURL.String); ok {
+		accent = value.accent
+		text = value.text
+	}
+	return "color: " + text + "; text-shadow: 0 1px 1px #000, 0 0 24px " + accent + ";"
+}
+
+type palette struct {
+	accent string
+	text   string
+}
+
+func (a *App) imagePalette(imageURL string) (palette, bool) {
+	if !strings.HasPrefix(imageURL, "/uploads/") {
+		return palette{}, false
+	}
+	filename := filepath.Base(imageURL)
+	if filename == "." || filename == "/" || filename == "" {
+		return palette{}, false
+	}
+	path := filepath.Join(a.cfg.UploadDir, filename)
+	f, err := os.Open(path)
+	if err != nil {
+		return palette{}, false
+	}
+	defer f.Close()
+	img, _, err := image.Decode(f)
+	if err != nil {
+		return palette{}, false
+	}
+	accent, luminance := sampledAccent(img)
+	text := "#ffffff"
+	if luminance > 0.62 {
+		text = "#080a0f"
+	}
+	return palette{accent: accent, text: text}, true
+}
+
+func sampledAccent(img image.Image) (string, float64) {
+	b := img.Bounds()
+	stepX := maxInt(1, b.Dx()/24)
+	stepY := maxInt(1, b.Dy()/24)
+	var rSum, gSum, bSum float64
+	var samples float64
+	for y := b.Min.Y; y < b.Max.Y; y += stepY {
+		for x := b.Min.X; x < b.Max.X; x += stepX {
+			cr, cg, cb, _ := img.At(x, y).RGBA()
+			r := float64(cr>>8) / 255.0
+			g := float64(cg>>8) / 255.0
+			bl := float64(cb>>8) / 255.0
+			// Prefer pixels with meaningful saturation for a stronger accent.
+			_, sat, _ := rgbToHSV(r, g, bl)
+			weight := 0.35 + sat*0.65
+			rSum += r * weight
+			gSum += g * weight
+			bSum += bl * weight
+			samples += weight
+		}
+	}
+	if samples == 0 {
+		return "#ffd460", 0
+	}
+	r := clamp01(rSum / samples)
+	g := clamp01(gSum / samples)
+	bl := clamp01(bSum / samples)
+	_, sat, val := rgbToHSV(r, g, bl)
+	// Nudge toward a stylish accent: keep hue, boost sat/value slightly.
+	sat = clamp01(sat*1.18 + 0.08)
+	val = clamp01(val*1.08 + 0.06)
+	ar, ag, ab := hsvToRGB(hueOf(r, g, bl), sat, val)
+	luminance := relativeLuminance(ar, ag, ab)
+	return rgbHex(ar, ag, ab), luminance
+}
+
+func rgbToHSV(r, g, b float64) (float64, float64, float64) {
+	max := math.Max(r, math.Max(g, b))
+	min := math.Min(r, math.Min(g, b))
+	delta := max - min
+	h := 0.0
+	switch {
+	case delta == 0:
+		h = 0
+	case max == r:
+		h = math.Mod((g-b)/delta, 6.0)
+	case max == g:
+		h = (b-r)/delta + 2.0
+	default:
+		h = (r-g)/delta + 4.0
+	}
+	h *= 60
+	if h < 0 {
+		h += 360
+	}
+	s := 0.0
+	if max > 0 {
+		s = delta / max
+	}
+	return h, s, max
+}
+
+func hsvToRGB(h, s, v float64) (float64, float64, float64) {
+	c := v * s
+	x := c * (1 - math.Abs(math.Mod(h/60.0, 2)-1))
+	m := v - c
+	r, g, b := 0.0, 0.0, 0.0
+	switch {
+	case h < 60:
+		r, g, b = c, x, 0
+	case h < 120:
+		r, g, b = x, c, 0
+	case h < 180:
+		r, g, b = 0, c, x
+	case h < 240:
+		r, g, b = 0, x, c
+	case h < 300:
+		r, g, b = x, 0, c
+	default:
+		r, g, b = c, 0, x
+	}
+	return r + m, g + m, b + m
+}
+
+func hueOf(r, g, b float64) float64 {
+	h, _, _ := rgbToHSV(r, g, b)
+	return h
+}
+
+func rgbHex(r, g, b float64) string {
+	cr := uint8(clamp01(r) * 255)
+	cg := uint8(clamp01(g) * 255)
+	cb := uint8(clamp01(b) * 255)
+	return fmt.Sprintf("#%02x%02x%02x", cr, cg, cb)
+}
+
+func relativeLuminance(r, g, b float64) float64 {
+	conv := func(c float64) float64 {
+		if c <= 0.03928 {
+			return c / 12.92
+		}
+		return math.Pow((c+0.055)/1.055, 2.4)
+	}
+	return 0.2126*conv(r) + 0.7152*conv(g) + 0.0722*conv(b)
+}
+
+func clamp01(v float64) float64 {
+	if v < 0 {
+		return 0
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func archiveMonths(username string, posts []store.Post) []archiveMonth {

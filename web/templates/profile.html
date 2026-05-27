@@ -15,8 +15,13 @@
   </section>
   <section class="grid" aria-label="word archive">
     {{range .Posts}}
-      <a class="tile" href="/@{{.Username}}/{{.Word}}">
-        <span>{{.Word}}</span>
+      <a class="tile {{if .HasImage}}tile-photo{{end}}" href="/@{{.Username}}/{{.Word}}">
+        {{if .HasImage}}
+          <img src="{{.ImageURL.String}}" alt="">
+          <span style="{{.CaptionCSS}}">{{.Word}}</span>
+        {{else}}
+          <span>{{.Word}}</span>
+        {{end}}
         <time datetime="{{.MachineTime}}">{{.DisplayTime}}</time>
       </a>
     {{else}}
