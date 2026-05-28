@@ -33,6 +33,9 @@ func main() {
 		VAPIDPublic:  os.Getenv("VAPID_PUBLIC_KEY"),
 		VAPIDPrivate: os.Getenv("VAPID_PRIVATE_KEY"),
 	}
+	if err := cfg.Validate(); err != nil {
+		log.Fatal(err)
+	}
 
 	db, err := store.Open(cfg.DatabaseURL)
 	if err != nil {
