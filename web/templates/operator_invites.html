@@ -1,13 +1,13 @@
 {{template "head" .}}
 <main class="settings">
   <form method="post" action="/operator/invites">
-    {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
-    {{if .Notice}}<p class="notice">{{.Notice}}</p>{{end}}
-    {{if .InviteLink}}<p class="notice">{{.InviteLink}}</p>{{end}}
+    {{if .Error}}<p class="error system-message">{{.Error}}</p>{{end}}
+    {{if .Notice}}<p class="system-message">{{.Notice}}</p>{{end}}
+    {{if .InviteLink}}<p class="invite-line"><a href="{{.InviteLink}}">{{.InviteLink}}</a></p>{{end}}
     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
     <button type="submit">make invite</button>
     {{range .Invites}}
-      <p class="notice">{{if .Used}}used {{end}}{{.Link}}</p>
+      <p class="invite-line">{{if .Used}}used {{end}}<a href="{{.Link}}">{{.Link}}</a></p>
     {{end}}
   </form>
 </main>

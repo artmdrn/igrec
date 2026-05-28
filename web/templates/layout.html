@@ -8,7 +8,7 @@
   <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png?v=20260521-french">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v=20260521-french">
   <link rel="manifest" href="/manifest.webmanifest?v=20260521-french">
-  <link rel="stylesheet" href="/static/igrec.css?v=20260521-french">
+  <link rel="stylesheet" href="/static/igrec.css?v=20260529-ui">
   <script src="/static/passkeys.js?v=20260521" defer></script>
   <title>igrec</title>
 </head>
@@ -16,9 +16,14 @@
   <header class="mast">
     <a class="logo" href="/"><img src="/static/favicon-32.png?v=20260521-french" alt=""> igrec</a>
     <nav>
+      <a href="/">feed</a>
       <a href="/write">write</a>
-      <a href="/settings">settings</a>
-      <a href="/login">login</a>
+      {{if .CurrentUser}}
+        <a href="/settings">@{{.CurrentUser.Username}}</a>
+        <a href="/logout">logout</a>
+      {{else}}
+        <a href="/login">login</a>
+      {{end}}
     </nav>
   </header>
 {{end}}

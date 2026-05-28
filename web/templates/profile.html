@@ -2,8 +2,20 @@
 <main>
   <section class="profile">
     <h1>@{{.User.Username}}</h1>
-    {{if .Title}}<p class="notice">{{.Title}}</p>{{end}}
+    {{if .Title}}<p class="system-message">{{.Title}}</p>{{end}}
     {{if .User.Domain}}<a rel="me" href="https://{{.User.Domain}}">{{.User.Domain}}</a>{{end}}
+    {{if .CanFriend}}
+      <form class="inline-action" method="post" action="/friends">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <input type="hidden" name="username" value="{{.User.Username}}">
+        <input type="hidden" name="next" value="/@{{.User.Username}}">
+        {{if .IsFriend}}
+          <button type="submit" name="action" value="unfriend">unfriend</button>
+        {{else}}
+          <button type="submit" name="action" value="friend">friend</button>
+        {{end}}
+      </form>
+    {{end}}
     {{if .Months}}
       <nav class="archive-nav" aria-label="archive months">
         <a href="/@{{.User.Username}}">all</a>
@@ -25,7 +37,7 @@
         <time datetime="{{.MachineTime}}">{{.DisplayTime}}</time>
       </a>
     {{else}}
-      <p class="empty">_</p>
+      <p class="empty">no words here yet</p>
     {{end}}
   </section>
 </main>

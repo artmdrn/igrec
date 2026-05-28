@@ -1,8 +1,8 @@
 {{template "head" .}}
 <main class="settings">
   <form method="post" action="/settings">
-    {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
-    {{if .Notice}}<p class="notice">{{.Notice}}</p>{{end}}
+    {{if .Error}}<p class="error system-message">{{.Error}}</p>{{end}}
+    {{if .Notice}}<p class="system-message">{{.Notice}}</p>{{end}}
     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
     <label>email <input type="email" name="email" value="{{.User.Email}}" autocomplete="email"></label>
     <label><input type="checkbox" name="daily" {{if .User.EmailOptIn}}checked{{end}}> daily word</label>
@@ -15,19 +15,26 @@
       </select>
     </label>
     <button type="submit">save</button>
-    <p class="notice" data-passkey-status>{{.PasskeyCount}} passkeys</p>
+    <p class="system-message" data-passkey-status>{{.PasskeyCount}} passkeys</p>
     <button type="button" data-passkey="register">add passkey</button>
-    <p class="notice">{{.InviteRemaining}} invites left</p>
+    <p class="system-message">{{.InviteRemaining}} invites left</p>
     {{range .Invites}}
-      <p class="notice">{{if .Used}}used {{end}}{{.Link}}</p>
+      <p class="invite-line">{{if .Used}}used {{end}}<a href="{{.Link}}">{{.Link}}</a></p>
     {{end}}
     {{if gt .InviteRemaining 0}}
       <button type="submit" name="action" value="invite">make invite</button>
     {{end}}
+    {{if .Friends}}
+      <section class="settings-section">
+        <h2>friends</h2>
+        {{range .Friends}}
+          <a href="/@{{.Username}}">@{{.Username}}</a>
+        {{end}}
+      </section>
+    {{end}}
     <a class="button" href="/logout">logout</a>
     <a class="button" href="/settings/export">export</a>
-    <button type="button">migrate</button>
-    <button type="button" class="danger">delete</button>
+    <p class="muted">migration and deletion controls are not enabled yet</p>
   </form>
 </main>
 {{template "foot" .}}

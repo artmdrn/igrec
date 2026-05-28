@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -113,6 +114,8 @@ func New(cfg Config, db *store.DB) http.Handler {
 	mux.HandleFunc("/join", app.join)
 	mux.HandleFunc("/login", app.login)
 	mux.HandleFunc("/logout", app.logout)
+	mux.HandleFunc("/friends", app.friends)
+	mux.HandleFunc("/email/unsubscribe", app.unsubscribeEmail)
 	mux.HandleFunc("/auth/magic", app.magic)
 	mux.HandleFunc("/auth/email", app.confirmEmail)
 	mux.HandleFunc("/auth/passkeys/register/options", app.passkeyRegisterOptions)
@@ -193,12 +196,21 @@ func (a *App) api(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) firehose(w http.ResponseWriter, r *http.Request) {
+	if user, ok := a.currentUser(r); ok {
+		posts, err := a.db.FriendPosts(user.ID, 100)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		a.render(w, r, "index.html", map[string]any{"Posts": a.styledPostViews(posts, "datetime"), "FeedTitle": "friends"})
+		return
+	}
 	posts, err := a.db.Firehose(100)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	a.render(w, "index.html", map[string]any{"Posts": a.styledPostViews(posts, "datetime")})
+	a.render(w, r, "index.html", map[string]any{"Posts": a.styledPostViews(posts, "datetime"), "FeedTitle": "public"})
 }
 
 func (a *App) profile(w http.ResponseWriter, r *http.Request) {
@@ -228,7 +240,15 @@ func (a *App) profile(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	a.render(w, "profile.html", map[string]any{"User": user, "Posts": a.styledPostViews(posts, user.TimestampPreference), "Months": months, "Title": title})
+	data := map[string]any{"User": user, "Posts": a.styledPostViews(posts, user.TimestampPreference), "Months": months, "Title": title}
+	if viewer, ok := a.currentUser(r); ok && viewer.ID != user.ID {
+		follows, err := a.db.UserFollows(viewer.ID, user.ID)
+		if err == nil {
+			data["CanFriend"] = true
+			data["IsFriend"] = follows
+		}
+	}
+	a.render(w, r, "profile.html", a.withCSRF(w, r, data))
 }
 
 func (a *App) write(w http.ResponseWriter, r *http.Request) {
@@ -240,7 +260,7 @@ func (a *App) write(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		a.render(w, "write.html", a.withCSRF(w, r, nil))
+		a.render(w, r, "write.html", a.withCSRF(w, r, nil))
 	case http.MethodPost:
 		if !a.validCSRF(r) {
 			http.Error(w, "forbidden", http.StatusForbidden)
@@ -249,7 +269,7 @@ func (a *App) write(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes+2<<20)
 		value, err := word.Normalize(r.FormValue("word"))
 		if err != nil {
-			a.render(w, "write.html", a.withCSRF(w, r, map[string]any{"Error": err.Error(), "Word": r.FormValue("word")}))
+			a.render(w, r, "write.html", a.withCSRF(w, r, map[string]any{"Error": err.Error(), "Word": r.FormValue("word")}))
 			return
 		}
 		var imageURL *string
@@ -261,7 +281,7 @@ func (a *App) write(w http.ResponseWriter, r *http.Request) {
 			focusY := parseUnitFloat(r.FormValue("focus_y"), 0.5)
 			uploaded, uploadErr := a.saveUploadedImage(imageFile, imageHeader, focusObject, focusX, focusY)
 			if uploadErr != nil {
-				a.render(w, "write.html", a.withCSRF(w, r, map[string]any{
+				a.render(w, r, "write.html", a.withCSRF(w, r, map[string]any{
 					"Error": uploadErr.Error(),
 					"Word":  r.FormValue("word"),
 				}))
@@ -269,7 +289,7 @@ func (a *App) write(w http.ResponseWriter, r *http.Request) {
 			}
 			imageURL = &uploaded
 		} else if !errors.Is(err, http.ErrMissingFile) {
-			a.render(w, "write.html", a.withCSRF(w, r, map[string]any{
+			a.render(w, r, "write.html", a.withCSRF(w, r, map[string]any{
 				"Error": "image upload failed",
 				"Word":  r.FormValue("word"),
 			}))
@@ -427,7 +447,7 @@ func (a *App) settings(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		a.render(w, "settings.html", a.withCSRF(w, r, a.settingsData(user, nil)))
+		a.render(w, r, "settings.html", a.withCSRF(w, r, a.settingsData(user, nil)))
 	case http.MethodPost:
 		if !a.validCSRF(r) {
 			http.Error(w, "forbidden", http.StatusForbidden)
@@ -445,7 +465,7 @@ func (a *App) settings(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if created >= limit {
-				a.render(w, "settings.html", a.withCSRF(w, r, a.settingsData(user, map[string]any{"Error": "all invites are already made"})))
+				a.render(w, r, "settings.html", a.withCSRF(w, r, a.settingsData(user, map[string]any{"Error": "all invites are already made"})))
 				return
 			}
 			code, err := newInviteCode()
@@ -457,14 +477,14 @@ func (a *App) settings(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			a.render(w, "settings.html", a.withCSRF(w, r, a.settingsData(user, map[string]any{"Notice": "invite made"})))
+			a.render(w, r, "settings.html", a.withCSRF(w, r, a.settingsData(user, map[string]any{"Notice": "invite made"})))
 			return
 		}
 		emailNotice := ""
 		email := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
 		if email != "" && !strings.EqualFold(email, user.Email) {
 			if _, err := mail.ParseAddress(email); err != nil {
-				a.render(w, "settings.html", a.withCSRF(w, r, a.settingsData(user, map[string]any{"Error": "email is not valid"})))
+				a.render(w, r, "settings.html", a.withCSRF(w, r, a.settingsData(user, map[string]any{"Error": "email is not valid"})))
 				return
 			}
 			token, tokenHash, err := newToken()
@@ -473,14 +493,14 @@ func (a *App) settings(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			if err := a.db.CreateEmailChangeToken(tokenHash, user.ID, email, time.Now().Add(30*time.Minute)); err != nil {
-				a.render(w, "settings.html", a.withCSRF(w, r, a.settingsData(user, map[string]any{"Error": "email is already used"})))
+				a.render(w, r, "settings.html", a.withCSRF(w, r, a.settingsData(user, map[string]any{"Error": "email is already used"})))
 				return
 			}
 			link := strings.TrimRight(a.cfg.BaseURL, "/") + "/auth/email?token=" + url.QueryEscape(token)
 			body := "confirm this email for igrec:\n\n" + link + "\n\nthis link expires in 30 minutes.\n"
 			err = (emailpkg.Resend{APIKey: a.cfg.ResendAPIKey, From: a.cfg.LoginEmailFrom}).SendPlain(email, "confirm igrec email", body)
 			if err != nil {
-				a.render(w, "settings.html", a.withCSRF(w, r, a.settingsData(user, map[string]any{"Error": err.Error()})))
+				a.render(w, r, "settings.html", a.withCSRF(w, r, a.settingsData(user, map[string]any{"Error": err.Error()})))
 				return
 			}
 			emailNotice = "check email to confirm"
@@ -491,13 +511,45 @@ func (a *App) settings(w http.ResponseWriter, r *http.Request) {
 		}
 		if emailNotice != "" {
 			user, _ = a.db.UserByUsername(user.Username)
-			a.render(w, "settings.html", a.withCSRF(w, r, a.settingsData(user, map[string]any{"Notice": emailNotice})))
+			a.render(w, r, "settings.html", a.withCSRF(w, r, a.settingsData(user, map[string]any{"Notice": emailNotice})))
 			return
 		}
 		http.Redirect(w, r, "/settings", http.StatusSeeOther)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func (a *App) friends(w http.ResponseWriter, r *http.Request) {
+	user, ok := a.currentUser(r)
+	if !ok {
+		a.requireLogin(w, r)
+		return
+	}
+	if r.Method == http.MethodPost {
+		if !a.validCSRF(r) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		target, err := a.db.UserByUsername(strings.TrimPrefix(strings.TrimSpace(r.FormValue("username")), "@"))
+		if err != nil || target.ID == user.ID {
+			http.Redirect(w, r, safeNext(r.FormValue("next")), http.StatusSeeOther)
+			return
+		}
+		if r.FormValue("action") == "unfriend" {
+			_ = a.db.DeleteUserFollow(user.ID, target.ID)
+		} else {
+			_ = a.db.CreateUserFollow(user.ID, target.ID)
+		}
+		http.Redirect(w, r, safeNext(r.FormValue("next")), http.StatusSeeOther)
+		return
+	}
+	posts, err := a.db.FriendPosts(user.ID, 100)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	a.render(w, r, "index.html", map[string]any{"Posts": a.styledPostViews(posts, "datetime"), "FeedTitle": "friends"})
 }
 
 func (a *App) export(w http.ResponseWriter, r *http.Request) {
@@ -538,7 +590,7 @@ func (a *App) export(w http.ResponseWriter, r *http.Request) {
 func (a *App) join(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		a.render(w, "join.html", a.withCSRF(w, r, map[string]any{"Invite": r.URL.Query().Get("invite")}))
+		a.render(w, r, "join.html", a.withCSRF(w, r, map[string]any{"Invite": r.URL.Query().Get("invite")}))
 	case http.MethodPost:
 		if !a.validCSRF(r) {
 			http.Error(w, "forbidden", http.StatusForbidden)
@@ -548,21 +600,21 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 		username, usernameErr := normalizeSignupUsername(r.FormValue("username"))
 		email := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
 		if usernameErr != nil {
-			a.render(w, "join.html", a.withCSRF(w, r, map[string]any{"Error": usernameErr.Error(), "Invite": inviteCode, "Username": r.FormValue("username"), "Email": email}))
+			a.render(w, r, "join.html", a.withCSRF(w, r, map[string]any{"Error": usernameErr.Error(), "Invite": inviteCode, "Username": r.FormValue("username"), "Email": email}))
 			return
 		}
 		if _, err := mail.ParseAddress(email); err != nil {
-			a.render(w, "join.html", a.withCSRF(w, r, map[string]any{"Error": "email is not valid", "Invite": inviteCode, "Username": username, "Email": email}))
+			a.render(w, r, "join.html", a.withCSRF(w, r, map[string]any{"Error": "email is not valid", "Invite": inviteCode, "Username": username, "Email": email}))
 			return
 		}
 		invite, err := a.db.InviteByCode(inviteCode)
 		if err != nil || invite.UsedAt.Valid {
-			a.render(w, "join.html", a.withCSRF(w, r, map[string]any{"Error": "invite is not valid", "Invite": inviteCode, "Username": username, "Email": email}))
+			a.render(w, r, "join.html", a.withCSRF(w, r, map[string]any{"Error": "invite is not valid", "Invite": inviteCode, "Username": username, "Email": email}))
 			return
 		}
 		user, err := a.db.CreateUser(username, email)
 		if err != nil {
-			a.render(w, "join.html", a.withCSRF(w, r, map[string]any{"Error": "username or email is already taken", "Invite": inviteCode, "Username": username, "Email": email}))
+			a.render(w, r, "join.html", a.withCSRF(w, r, map[string]any{"Error": "username or email is already taken", "Invite": inviteCode, "Username": username, "Email": email}))
 			return
 		}
 		if err := a.db.UseInvite(invite.Code, user.ID); err != nil {
@@ -571,6 +623,9 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 		}
 		if invite.InviterID.Valid {
 			_ = a.db.CreateUserFollow(user.ID, invite.InviterID.Int64)
+		}
+		if cc, err := a.db.UserByUsername("cc00ffee"); err == nil {
+			_ = a.db.CreateUserFollow(user.ID, cc.ID)
 		}
 		if err := a.startSession(w, user.ID); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -585,7 +640,11 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 func (a *App) login(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
-		a.render(w, "login.html", a.withCSRF(w, r, map[string]any{"Next": r.URL.Query().Get("next")}))
+		if _, ok := a.currentUser(r); ok {
+			http.Redirect(w, r, safeNext(r.URL.Query().Get("next")), http.StatusSeeOther)
+			return
+		}
+		a.render(w, r, "login.html", a.withCSRF(w, r, map[string]any{"Next": r.URL.Query().Get("next")}))
 	case http.MethodPost:
 		if !a.validCSRF(r) {
 			http.Error(w, "forbidden", http.StatusForbidden)
@@ -595,7 +654,7 @@ func (a *App) login(w http.ResponseWriter, r *http.Request) {
 		next := safeNext(r.FormValue("next"))
 		user, err := a.db.UserByEmail(email)
 		if err != nil {
-			a.render(w, "login.html", a.withCSRF(w, r, map[string]any{"Error": "no account uses that email yet", "Email": email, "Next": next}))
+			a.render(w, r, "login.html", a.withCSRF(w, r, map[string]any{"Error": "no account uses that email yet", "Email": email, "Next": next}))
 			return
 		}
 		token, tokenHash, err := newToken()
@@ -611,10 +670,10 @@ func (a *App) login(w http.ResponseWriter, r *http.Request) {
 		body := "sign in to igrec:\n\n" + link + "\n\nthis link expires in 20 minutes.\n"
 		err = (emailpkg.Resend{APIKey: a.cfg.ResendAPIKey, From: a.cfg.LoginEmailFrom}).SendPlain(user.Email, "igrec sign in", body)
 		if err != nil {
-			a.render(w, "login.html", a.withCSRF(w, r, map[string]any{"Error": err.Error(), "Email": email, "Next": next}))
+			a.render(w, r, "login.html", a.withCSRF(w, r, map[string]any{"Error": err.Error(), "Email": email, "Next": next}))
 			return
 		}
-		a.render(w, "login_sent.html", map[string]any{"Email": email})
+		a.render(w, r, "login_sent.html", map[string]any{"Email": email})
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -628,7 +687,7 @@ func (a *App) magic(w http.ResponseWriter, r *http.Request) {
 	}
 	user, err := a.db.UseLoginToken(hashToken(token))
 	if err != nil {
-		a.render(w, "login.html", map[string]any{"Error": "login link is invalid or expired"})
+		a.render(w, r, "login.html", map[string]any{"Error": "login link is invalid or expired"})
 		return
 	}
 	if err := a.startSession(w, user.ID); err != nil {
@@ -646,7 +705,7 @@ func (a *App) confirmEmail(w http.ResponseWriter, r *http.Request) {
 	}
 	user, err := a.db.UseEmailChangeToken(hashToken(token))
 	if err != nil {
-		a.render(w, "settings.html", map[string]any{"User": user, "Error": "email link is invalid or expired"})
+		a.render(w, r, "settings.html", map[string]any{"User": user, "Error": "email link is invalid or expired"})
 		return
 	}
 	if _, ok := a.currentUser(r); !ok {
@@ -664,6 +723,19 @@ func (a *App) logout(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: a.secureCookies()})
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func (a *App) unsubscribeEmail(w http.ResponseWriter, r *http.Request) {
+	user, err := a.userFromEmailToken(r.URL.Query().Get("token"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if err := a.db.SetEmailOptIn(user.ID, false); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	a.render(w, r, "login_sent.html", map[string]any{"Notice": "daily email is off"})
 }
 
 func (a *App) adminInvites(w http.ResponseWriter, r *http.Request) {
@@ -699,7 +771,7 @@ func (a *App) operatorInvites(w http.ResponseWriter, r *http.Request) {
 		for key, value := range extra {
 			data[key] = value
 		}
-		a.render(w, "operator_invites.html", a.withCSRF(w, r, data))
+		a.render(w, r, "operator_invites.html", a.withCSRF(w, r, data))
 	}
 
 	if r.Method != http.MethodPost {
@@ -821,8 +893,13 @@ func (a *App) manifest(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (a *App) render(w http.ResponseWriter, name string, data any) {
+func (a *App) render(w http.ResponseWriter, r *http.Request, name string, data any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if page, ok := data.(map[string]any); ok {
+		if user, authenticated := a.currentUser(r); authenticated {
+			page["CurrentUser"] = user
+		}
+	}
 	if err := a.templates.ExecuteTemplate(w, name, data); err != nil && !errors.Is(err, http.ErrHandlerTimeout) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
@@ -894,6 +971,9 @@ func (a *App) settingsData(user store.User, extra map[string]any) map[string]any
 		remaining = 0
 	}
 	data["InviteRemaining"] = remaining
+	if friends, err := a.db.UserFriends(user.ID); err == nil {
+		data["Friends"] = friends
+	}
 
 	for key, value := range extra {
 		data[key] = value
@@ -1000,6 +1080,55 @@ func newInviteCode() (string, error) {
 func hashToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return fmt.Sprintf("%x", sum[:])
+}
+
+func (a *App) emailToken(user store.User) string {
+	return EmailToken(a.cfg, user)
+}
+
+func EmailToken(cfg Config, user store.User) string {
+	secret := cfg.AppSecret
+	if secret == "" {
+		secret = cfg.DatabaseURL
+	}
+	payload := fmt.Sprintf("%d:%s", user.ID, strings.ToLower(user.Email))
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(payload))
+	return base64.RawURLEncoding.EncodeToString([]byte(payload + ":" + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))))
+}
+
+func (a *App) userFromEmailToken(token string) (store.User, error) {
+	raw, err := base64.RawURLEncoding.DecodeString(token)
+	if err != nil {
+		return store.User{}, err
+	}
+	parts := strings.Split(string(raw), ":")
+	if len(parts) != 3 {
+		return store.User{}, errors.New("invalid email token")
+	}
+	id, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		return store.User{}, err
+	}
+	user, err := a.db.UserByID(id)
+	if err != nil {
+		return store.User{}, err
+	}
+	if !strings.EqualFold(parts[1], user.Email) {
+		return store.User{}, errors.New("email token does not match user")
+	}
+	secret := a.cfg.AppSecret
+	if secret == "" {
+		secret = a.cfg.DatabaseURL
+	}
+	payload := fmt.Sprintf("%d:%s", user.ID, strings.ToLower(user.Email))
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(payload))
+	expected := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	if subtle.ConstantTimeCompare([]byte(expected), []byte(parts[2])) != 1 {
+		return store.User{}, errors.New("invalid email token")
+	}
+	return user, nil
 }
 
 func safeNext(next string) string {

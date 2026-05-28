@@ -1,7 +1,7 @@
 {{template "head" .}}
 <main class="write">
   <form method="post" action="/write" enctype="multipart/form-data" class="compose" data-compose>
-    {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+    {{if .Error}}<p class="error system-message">{{.Error}}</p>{{end}}
     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
     <input name="word" value="{{.Word}}" maxlength="50" autocomplete="off" autofocus required aria-label="word">
     <section class="compose-photo">
@@ -12,7 +12,7 @@
       <div class="compose-preview" data-preview-wrap>
         <img alt="" data-preview-image hidden>
         <button type="button" class="focus-pin" data-focus-pin hidden aria-label="focus point"></button>
-        <p class="notice compose-empty" data-preview-empty>drop a photo, then tap the object to focus</p>
+        <p class="system-message compose-empty" data-preview-empty>drop a photo, then tap the object to focus</p>
       </div>
       <label class="focus-toggle"><input type="checkbox" name="focus_object" data-focus-toggle> focus on object</label>
       <input type="hidden" name="focus_x" value="0.5" data-focus-x>

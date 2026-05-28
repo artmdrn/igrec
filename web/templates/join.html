@@ -1,7 +1,7 @@
 {{template "head" .}}
 <main class="settings">
   <form method="post" action="/join">
-    {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+    {{if .Error}}<p class="error system-message">{{.Error}}</p>{{end}}
     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
     <label>invite <input name="invite" value="{{.Invite}}" required></label>
     <label>handle

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"html/template"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -9,7 +10,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-	"html/template"
 
 	"igrec.net/igrec/internal/store"
 )
@@ -32,9 +32,9 @@ func testApp(t *testing.T) *App {
 	}
 
 	return &App{
-		cfg: Config{BaseURL: "http://localhost:8080"},
-		db:  db,
-		templates: tmpl,
+		cfg:            Config{BaseURL: "http://localhost:8080"},
+		db:             db,
+		templates:      tmpl,
 		operatorEmails: map[string]struct{}{},
 	}
 }

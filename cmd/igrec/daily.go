@@ -18,15 +18,20 @@ func sendDailyEmails(cfg app.Config, db *store.DB) (int, error) {
 
 	sent := 0
 	for _, candidate := range candidates {
-		body := ">_\n"
+		unsubscribe := fmt.Sprintf("%s/email/unsubscribe?token=%s", cfg.BaseURL, app.EmailToken(cfg, candidate.User))
+		body := emailpkg.DailyPrompt("", "", candidate.SentCount == 0, unsubscribe)
 		if candidate.Post.Valid {
 			post := candidate.Post.V
-			body = emailpkg.DailyPrompt(post.Username, post.Word)
+			body = emailpkg.DailyPrompt(post.Username, post.Word, candidate.SentCount == 0, unsubscribe)
 		}
 		err := (emailpkg.Resend{
 			APIKey:  cfg.ResendAPIKey,
 			From:    cfg.DailyEmailFrom,
 			ReplyTo: fmt.Sprintf("Y <_+%s@igrec.net>", candidate.User.Username),
+			Headers: map[string]string{
+				"List-Unsubscribe":      "<" + unsubscribe + ">",
+				"List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+			},
 		}).SendPlain(candidate.User.Email, ">", body)
 		if err != nil {
 			return sent, fmt.Errorf("send daily email to %s: %w", candidate.User.Email, err)

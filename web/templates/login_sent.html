@@ -1,5 +1,5 @@
 {{template "head" .}}
 <main class="settings">
-  <p class="notice">check email</p>
+  <p class="system-message">{{if .Notice}}{{.Notice}}{{else}}check email{{end}}</p>
 </main>
 {{template "foot" .}}

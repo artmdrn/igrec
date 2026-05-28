@@ -47,8 +47,9 @@ type Invite struct {
 }
 
 type DailyEmailCandidate struct {
-	User User
-	Post sql.Null[Post]
+	User      User
+	Post      sql.Null[Post]
+	SentCount int
 }
 
 type WebAuthnSession struct {
@@ -249,6 +250,14 @@ func (db *DB) UserByUsername(username string) (User, error) {
 	return user, err
 }
 
+func (db *DB) UserByID(id int64) (User, error) {
+	var user User
+	err := db.QueryRow(`select id, username, domain, email, fediverse_acct, email_opt_in, timestamp_preference, migration_target, created_at from users where id = ?`, id).
+		Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt)
+	user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
+	return user, err
+}
+
 func (db *DB) UserByEmail(email string) (User, error) {
 	var user User
 	err := db.QueryRow(`select id, username, domain, email, fediverse_acct, email_opt_in, timestamp_preference, migration_target, created_at from users where lower(email) = lower(?)`, strings.TrimSpace(email)).
@@ -374,6 +383,48 @@ func (db *DB) CreateUserFollow(followerID, followedID int64) error {
 	return err
 }
 
+func (db *DB) DeleteUserFollow(followerID, followedID int64) error {
+	_, err := db.Exec(`delete from user_follows where follower_user_id = ? and followed_user_id = ?`, followerID, followedID)
+	return err
+}
+
+func (db *DB) UserFollows(followerID, followedID int64) (bool, error) {
+	var found int
+	err := db.QueryRow(`select 1 from user_follows where follower_user_id = ? and followed_user_id = ?`, followerID, followedID).Scan(&found)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+func (db *DB) UserFriends(userID int64) ([]User, error) {
+	rows, err := db.Query(`
+select users.id, users.username, users.domain, users.email, users.fediverse_acct, users.email_opt_in, users.timestamp_preference, users.migration_target, users.created_at
+from user_follows
+join users on users.id = user_follows.followed_user_id
+where user_follows.follower_user_id = ?
+order by lower(users.username) asc`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []User
+	for rows.Next() {
+		var user User
+		if err := rows.Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt); err != nil {
+			return nil, err
+		}
+		user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
+		users = append(users, user)
+	}
+	return users, rows.Err()
+}
+
+func (db *DB) FriendPosts(userID int64, limit int) ([]Post, error) {
+	return db.posts(`where posts.user_id in (select followed_user_id from user_follows where follower_user_id = ?)`, limit, userID)
+}
+
 func (db *DB) CreateSession(tokenHash string, userID int64, expiresAt time.Time) error {
 	_, err := db.Exec(`insert into sessions(token_hash, user_id, expires_at) values(?, ?, ?)`, tokenHash, userID, expiresAt.UTC())
 	return err
@@ -468,10 +519,20 @@ func (db *DB) UpdateSettings(userID int64, preference string, emailOptIn bool) e
 	return err
 }
 
+func (db *DB) SetEmailOptIn(userID int64, emailOptIn bool) error {
+	optIn := 0
+	if emailOptIn {
+		optIn = 1
+	}
+	_, err := db.Exec(`update users set email_opt_in = ? where id = ?`, optIn, userID)
+	return err
+}
+
 func (db *DB) DailyEmailCandidates(sentOn string, limit int) ([]DailyEmailCandidate, error) {
 	rows, err := db.Query(`
 select users.id, users.username, users.domain, users.email, users.fediverse_acct, users.email_opt_in, users.timestamp_preference, users.migration_target, users.created_at,
-       posts.id, posts.user_id, post_users.username, posts.word, posts.image_url, posts.created_at
+       posts.id, posts.user_id, post_users.username, posts.word, posts.image_url, posts.created_at,
+       (select count(*) from daily_email_sends all_sends where all_sends.user_id = users.id)
 from users
 left join daily_email_sends on daily_email_sends.user_id = users.id and daily_email_sends.sent_on = ?
 left join posts on posts.id = (
@@ -522,6 +583,7 @@ limit ?`, sentOn, limit)
 			&postWord,
 			&imageURL,
 			&postCreatedAt,
+			&candidate.SentCount,
 		); err != nil {
 			return nil, err
 		}

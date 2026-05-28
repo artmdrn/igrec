@@ -11,13 +11,13 @@ import (
 func Actor(baseURL string, user store.User) map[string]any {
 	id := actorID(baseURL, user.Username)
 	return map[string]any{
-		"@context":          []any{"https://www.w3.org/ns/activitystreams", "https://w3id.org/security/v1"},
-		"id":                id,
-		"type":              "Person",
-		"preferredUsername": user.Username,
-		"inbox":             id + "/inbox",
-		"outbox":            id + "/outbox",
-		"url":               profileURL(baseURL, user.Username),
+		"@context":                  []any{"https://www.w3.org/ns/activitystreams", "https://w3id.org/security/v1"},
+		"id":                        id,
+		"type":                      "Person",
+		"preferredUsername":         user.Username,
+		"inbox":                     id + "/inbox",
+		"outbox":                    id + "/outbox",
+		"url":                       profileURL(baseURL, user.Username),
 		"manuallyApprovesFollowers": false,
 		"discoverable":              true,
 	}

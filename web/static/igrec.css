@@ -65,10 +65,26 @@ nav {
   font-size: .85rem;
 }
 
+nav a {
+  border-bottom: 2px solid transparent;
+}
+
+nav a:hover,
+nav a:focus {
+  border-bottom-color: var(--ink);
+}
+
 main {
   width: min(100%, 980px);
   margin: 0 auto;
   padding: 1rem;
+}
+
+.feed-label {
+  margin: 0 0 .5rem;
+  text-transform: uppercase;
+  font-size: .78rem;
+  color: var(--blue);
 }
 
 .feed {
@@ -161,6 +177,11 @@ time {
   background: #fffef7;
 }
 
+.inline-action {
+  margin-top: 1rem;
+  max-width: 14rem;
+}
+
 h1 {
   margin: 0;
   overflow-wrap: anywhere;
@@ -228,6 +249,20 @@ h1 {
   display: grid;
   gap: .75rem;
   margin-top: 12vh;
+}
+
+.settings-section {
+  display: grid;
+  gap: .45rem;
+  padding: .8rem 0;
+  border-top: 2px solid var(--ink);
+  border-bottom: 2px solid var(--ink);
+}
+
+.settings-section h2 {
+  margin: 0;
+  font-size: .9rem;
+  text-transform: uppercase;
 }
 
 .write .compose {
@@ -370,25 +405,45 @@ label input[type="checkbox"] {
   background: var(--red);
 }
 
-.error {
-  margin: 0;
-  padding: .5rem;
-  background: var(--red);
-  border: 3px solid var(--ink);
+.system-message,
+.error,
+.muted,
+.invite-line {
+	margin: 0;
+	padding: .55rem 0;
+	overflow-wrap: anywhere;
 }
 
-.notice {
-  margin: 0;
-  padding: .8rem;
-  border: 3px solid var(--ink);
-  background: var(--blue);
-  color: #fff;
-  overflow-wrap: anywhere;
+.system-message {
+  color: var(--blue);
+  text-transform: uppercase;
+}
+
+.error {
+	color: var(--red);
+	font-weight: 900;
+}
+
+.muted {
+  color: rgba(17,17,17,.6);
+}
+
+.invite-line {
+  font-size: .82rem;
+}
+
+.invite-line a {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
 }
 
 .empty {
   min-height: 70vh;
   display: grid;
   place-items: center;
-  font-size: 20vw;
+  color: rgba(17,17,17,.45);
+  font-size: clamp(2rem, 12vw, 7rem);
+  text-align: center;
+  text-transform: uppercase;
 }

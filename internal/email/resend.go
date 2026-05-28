@@ -62,6 +62,16 @@ func (r Resend) SendPlain(to, subject, body string) error {
 	return nil
 }
 
-func DailyPrompt(username, value string) string {
-	return fmt.Sprintf("@%s said: %s\n\n>_\n", username, value)
+func DailyPrompt(username, value string, first bool, unsubscribeURL string) string {
+	body := ">_\n"
+	if username != "" && value != "" {
+		body = fmt.Sprintf("@%s said: %s\n\n>_\n", username, value)
+	}
+	if first {
+		body += "\nreply with one word. it will post to igrec.\n"
+	}
+	if unsubscribeURL != "" {
+		body += "\nunsubscribe: " + unsubscribeURL + "\n"
+	}
+	return body
 }
