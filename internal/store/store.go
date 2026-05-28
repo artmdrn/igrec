@@ -105,6 +105,11 @@ create table if not exists invites (
   created_at datetime not null default current_timestamp,
   used_at datetime
 );
+create table if not exists invite_grants (
+  user_id integer primary key references users(id),
+  extra_invites integer not null default 0,
+  updated_at datetime not null default current_timestamp
+);
 create table if not exists sessions (
   token_hash text primary key,
   user_id integer not null references users(id),
@@ -315,6 +320,18 @@ func (db *DB) InviteCountByInviter(inviterID int64) (int, error) {
 	var count int
 	err := db.QueryRow(`select count(*) from invites where inviter_id = ?`, inviterID).Scan(&count)
 	return count, err
+}
+
+func (db *DB) InviteLimitByInviter(inviterID int64) (int, error) {
+	var extra int
+	err := db.QueryRow(`select coalesce(extra_invites, 0) from invite_grants where user_id = ?`, inviterID).Scan(&extra)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 3, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return 3 + extra, nil
 }
 
 func (db *DB) RecentInvites(limit int) ([]Invite, error) {

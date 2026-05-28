@@ -439,7 +439,12 @@ func (a *App) settings(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
-			if created >= 3 {
+			limit, err := a.db.InviteLimitByInviter(user.ID)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			if created >= limit {
 				a.render(w, "settings.html", a.withCSRF(w, r, a.settingsData(user, map[string]any{"Error": "all invites are already made"})))
 				return
 			}
@@ -880,7 +885,11 @@ func (a *App) settingsData(user store.User, extra map[string]any) map[string]any
 		})
 	}
 	data["Invites"] = views
-	remaining := 3 - len(invites)
+	limit, err := a.db.InviteLimitByInviter(user.ID)
+	if err != nil {
+		limit = 3
+	}
+	remaining := limit - len(invites)
 	if remaining < 0 {
 		remaining = 0
 	}
