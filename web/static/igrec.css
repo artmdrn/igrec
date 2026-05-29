@@ -74,17 +74,15 @@ nav a:focus {
   border-bottom-color: var(--ink);
 }
 
+nav a[aria-current="page"] {
+  color: var(--blue);
+  border-bottom-color: var(--blue);
+}
+
 main {
   width: min(100%, 980px);
   margin: 0 auto;
   padding: 1rem;
-}
-
-.feed-label {
-  margin: 0 0 .5rem;
-  text-transform: uppercase;
-  font-size: .78rem;
-  color: var(--blue);
 }
 
 .feed {
