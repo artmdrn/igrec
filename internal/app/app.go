@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -358,6 +359,9 @@ func (a *App) saveUploadedImage(file io.Reader, header *multipart.FileHeader, fo
 	if err != nil {
 		return "", errors.New("invalid image file")
 	}
+	if contentType == "image/jpeg" {
+		img = applyJPEGOrientation(img, raw)
+	}
 	bounds := img.Bounds()
 	if bounds.Dx() < 24 || bounds.Dy() < 24 {
 		return "", errors.New("image is too small")
@@ -455,6 +459,130 @@ func downscaleWithin(img image.Image, maxEdge int) image.Image {
 		}
 	}
 	return dst
+}
+
+func applyJPEGOrientation(img image.Image, raw []byte) image.Image {
+	orientation := jpegOrientation(raw)
+	if orientation <= 1 || orientation > 8 {
+		return img
+	}
+	b := img.Bounds()
+	w := b.Dx()
+	h := b.Dy()
+	dw := w
+	dh := h
+	if orientation >= 5 {
+		dw = h
+		dh = w
+	}
+	dst := image.NewRGBA(image.Rect(0, 0, dw, dh))
+	for y := 0; y < dh; y++ {
+		for x := 0; x < dw; x++ {
+			var sx, sy int
+			switch orientation {
+			case 2:
+				sx, sy = w-1-x, y
+			case 3:
+				sx, sy = w-1-x, h-1-y
+			case 4:
+				sx, sy = x, h-1-y
+			case 5:
+				sx, sy = y, x
+			case 6:
+				sx, sy = y, h-1-x
+			case 7:
+				sx, sy = w-1-y, h-1-x
+			case 8:
+				sx, sy = w-1-y, x
+			default:
+				sx, sy = x, y
+			}
+			dst.Set(x, y, img.At(b.Min.X+sx, b.Min.Y+sy))
+		}
+	}
+	return dst
+}
+
+func jpegOrientation(raw []byte) int {
+	if len(raw) < 4 || raw[0] != 0xff || raw[1] != 0xd8 {
+		return 1
+	}
+	for i := 2; i+4 <= len(raw); {
+		if raw[i] != 0xff {
+			return 1
+		}
+		for i < len(raw) && raw[i] == 0xff {
+			i++
+		}
+		if i >= len(raw) {
+			return 1
+		}
+		marker := raw[i]
+		i++
+		if marker == 0xd9 || marker == 0xda {
+			return 1
+		}
+		if i+2 > len(raw) {
+			return 1
+		}
+		size := int(binary.BigEndian.Uint16(raw[i : i+2]))
+		i += 2
+		if size < 2 || i+size-2 > len(raw) {
+			return 1
+		}
+		segment := raw[i : i+size-2]
+		i += size - 2
+		if marker != 0xe1 || len(segment) < 14 || string(segment[:6]) != "Exif\x00\x00" {
+			continue
+		}
+		if value := exifOrientation(segment[6:]); value >= 1 && value <= 8 {
+			return value
+		}
+	}
+	return 1
+}
+
+func exifOrientation(tiff []byte) int {
+	if len(tiff) < 8 {
+		return 1
+	}
+	var order binary.ByteOrder
+	switch string(tiff[:2]) {
+	case "II":
+		order = binary.LittleEndian
+	case "MM":
+		order = binary.BigEndian
+	default:
+		return 1
+	}
+	if order.Uint16(tiff[2:4]) != 42 {
+		return 1
+	}
+	offset := int(order.Uint32(tiff[4:8]))
+	if offset < 8 || offset+2 > len(tiff) {
+		return 1
+	}
+	count := int(order.Uint16(tiff[offset : offset+2]))
+	entries := offset + 2
+	for n := 0; n < count; n++ {
+		entry := entries + n*12
+		if entry+12 > len(tiff) {
+			return 1
+		}
+		tag := order.Uint16(tiff[entry : entry+2])
+		if tag != 0x0112 {
+			continue
+		}
+		typ := order.Uint16(tiff[entry+2 : entry+4])
+		if typ == 3 {
+			return int(order.Uint16(tiff[entry+8 : entry+10]))
+		}
+		if typ == 4 {
+			return int(order.Uint32(tiff[entry+8 : entry+12]))
+		}
+		return 1
+	}
+	return 1
 }
 
 func (a *App) settings(w http.ResponseWriter, r *http.Request) {
