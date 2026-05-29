@@ -100,6 +100,16 @@ main {
   border-bottom: 2px solid var(--ink);
 }
 
+.pager {
+  display: grid;
+  place-items: center;
+  min-height: 3.2rem;
+  margin-top: 1rem;
+  border: 3px solid var(--ink);
+  background: #fffef7;
+  text-transform: uppercase;
+}
+
 .said,
 time {
   font-size: .78rem;

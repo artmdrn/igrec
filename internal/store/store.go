@@ -425,6 +425,13 @@ func (db *DB) FriendPosts(userID int64, limit int) ([]Post, error) {
 	return db.posts(`where posts.user_id in (select followed_user_id from user_follows where follower_user_id = ?)`, limit, userID)
 }
 
+func (db *DB) FriendPostsBefore(userID, beforeID int64, limit int) ([]Post, error) {
+	if beforeID > 0 {
+		return db.posts(`where posts.user_id in (select followed_user_id from user_follows where follower_user_id = ?) and posts.id < ?`, limit, userID, beforeID)
+	}
+	return db.FriendPosts(userID, limit)
+}
+
 func (db *DB) CreateSession(tokenHash string, userID int64, expiresAt time.Time) error {
 	_, err := db.Exec(`insert into sessions(token_hash, user_id, expires_at) values(?, ?, ?)`, tokenHash, userID, expiresAt.UTC())
 	return err
@@ -729,6 +736,13 @@ where posts.id = ?`, id).
 
 func (db *DB) Firehose(limit int) ([]Post, error) {
 	return db.posts(`where 1=1`, limit)
+}
+
+func (db *DB) FirehoseBefore(beforeID int64, limit int) ([]Post, error) {
+	if beforeID > 0 {
+		return db.posts(`where posts.id < ?`, limit, beforeID)
+	}
+	return db.Firehose(limit)
 }
 
 func (db *DB) PostsByUser(username string, limit int) ([]Post, error) {

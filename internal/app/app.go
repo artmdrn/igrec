@@ -222,21 +222,14 @@ func (a *App) api(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) firehose(w http.ResponseWriter, r *http.Request) {
-	if user, ok := a.currentUser(r); ok {
-		posts, err := a.db.FriendPosts(user.ID, 100)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		a.render(w, r, "index.html", map[string]any{"Posts": a.styledPostViews(posts, "datetime"), "FeedTitle": "friends"})
-		return
-	}
-	posts, err := a.db.Firehose(100)
+	before := parseIntQuery(r, "before")
+	const pageSize = 30
+	posts, err := a.db.FirehoseBefore(before, pageSize+1)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	a.render(w, r, "index.html", map[string]any{"Posts": a.styledPostViews(posts, "datetime"), "FeedTitle": "public"})
+	a.render(w, r, "index.html", feedData(a.styledPostViews(posts, "datetime"), pageSize, "public", "/"))
 }
 
 func (a *App) profile(w http.ResponseWriter, r *http.Request) {
@@ -570,12 +563,14 @@ func (a *App) friends(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, safeNext(r.FormValue("next")), http.StatusSeeOther)
 		return
 	}
-	posts, err := a.db.FriendPosts(user.ID, 100)
+	before := parseIntQuery(r, "before")
+	const pageSize = 30
+	posts, err := a.db.FriendPostsBefore(user.ID, before, pageSize+1)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	a.render(w, r, "index.html", map[string]any{"Posts": a.styledPostViews(posts, "datetime"), "FeedTitle": "friends"})
+	a.render(w, r, "index.html", feedData(a.styledPostViews(posts, "datetime"), pageSize, "friends", "/friends"))
 }
 
 func (a *App) export(w http.ResponseWriter, r *http.Request) {
@@ -1162,6 +1157,24 @@ func safeNext(next string) string {
 		return "/write"
 	}
 	return next
+}
+
+func parseIntQuery(r *http.Request, key string) int64 {
+	value, err := strconv.ParseInt(strings.TrimSpace(r.URL.Query().Get(key)), 10, 64)
+	if err != nil || value < 0 {
+		return 0
+	}
+	return value
+}
+
+func feedData(posts []postView, pageSize int, title, path string) map[string]any {
+	data := map[string]any{"Posts": posts, "FeedTitle": title}
+	if len(posts) > pageSize {
+		last := posts[pageSize-1]
+		data["Posts"] = posts[:pageSize]
+		data["MoreHref"] = path + "?before=" + strconv.FormatInt(last.ID, 10)
+	}
+	return data
 }
 
 func senderEmail(raw string) string {

@@ -18,5 +18,8 @@
   {{else}}
     <p class="empty">no words here yet</p>
   {{end}}
+  {{if .MoreHref}}
+    <a class="pager" href="{{.MoreHref}}">older</a>
+  {{end}}
 </main>
 {{template "foot" .}}

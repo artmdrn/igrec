@@ -17,6 +17,7 @@
     <a class="logo" href="/"><img src="/static/favicon-32.png?v=20260521-french" alt=""> igrec</a>
     <nav>
       <a href="/">feed</a>
+      {{if .CurrentUser}}<a href="/friends">friends</a>{{end}}
       <a href="/write">write</a>
       {{if .CurrentUser}}
         <a href="/settings">@{{.CurrentUser.Username}}</a>
