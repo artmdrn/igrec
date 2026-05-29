@@ -15,6 +15,7 @@ import (
 	"image/jpeg"
 	_ "image/png"
 	"io"
+	"log"
 	"math"
 	"mime/multipart"
 	"net/http"
@@ -131,7 +132,32 @@ func New(cfg Config, db *store.DB) http.Handler {
 	mux.HandleFunc("/.well-known/webfinger", app.webfinger)
 	mux.HandleFunc("/ap/users/", app.actor)
 	mux.HandleFunc("/manifest.webmanifest", app.manifest)
-	return mux
+	return app.withRequestLogging(mux)
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+func (a *App) withRequestLogging(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		started := time.Now()
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		defer func() {
+			if panicValue := recover(); panicValue != nil {
+				log.Printf("panic method=%s path=%s remote=%s err=%v", r.Method, r.URL.Path, r.RemoteAddr, panicValue)
+				http.Error(rec, "internal server error", http.StatusInternalServerError)
+			}
+			log.Printf("request method=%s path=%s status=%d duration_ms=%d remote=%s", r.Method, r.URL.Path, rec.status, time.Since(started).Milliseconds(), r.RemoteAddr)
+		}()
+		next.ServeHTTP(rec, r)
+	})
 }
 
 func (a *App) healthz(w http.ResponseWriter, r *http.Request) {
