@@ -71,7 +71,7 @@ func DailyPrompt(username, value string, first bool, unsubscribeURL string) stri
 		body += "\nreply with one word. it will post to igrec.\n"
 	}
 	if unsubscribeURL != "" {
-		body += "\nunsubscribe: " + unsubscribeURL + "\n"
+		body += "\nstop it: " + unsubscribeURL + "\n"
 	}
 	return body
 }

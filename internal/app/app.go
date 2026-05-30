@@ -117,6 +117,7 @@ func New(cfg Config, db *store.DB) http.Handler {
 	mux.HandleFunc("/login", app.login)
 	mux.HandleFunc("/logout", app.logout)
 	mux.HandleFunc("/friends", app.friends)
+	mux.HandleFunc("/u/", app.shortUnsubscribeEmail)
 	mux.HandleFunc("/email/unsubscribe", app.unsubscribeEmail)
 	mux.HandleFunc("/auth/magic", app.magic)
 	mux.HandleFunc("/auth/email", app.confirmEmail)
@@ -887,6 +888,24 @@ func (a *App) unsubscribeEmail(w http.ResponseWriter, r *http.Request) {
 	a.render(w, r, "login_sent.html", map[string]any{"Notice": "daily email is off"})
 }
 
+func (a *App) shortUnsubscribeEmail(w http.ResponseWriter, r *http.Request) {
+	token := strings.TrimPrefix(r.URL.Path, "/u/")
+	if token == "" || strings.Contains(token, "/") {
+		http.NotFound(w, r)
+		return
+	}
+	user, err := a.db.UserByUnsubscribeToken(token)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if err := a.db.SetEmailOptIn(user.ID, false); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	a.render(w, r, "login_sent.html", map[string]any{"Notice": "daily email is off"})
+}
+
 func (a *App) adminInvites(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/operator/invites", http.StatusSeeOther)
 }
@@ -1224,6 +1243,14 @@ func newInviteCode() (string, error) {
 		return "", err
 	}
 	return strings.TrimRight(base64.RawURLEncoding.EncodeToString([]byte(token))[:22], "="), nil
+}
+
+func NewShortToken() (string, error) {
+	var raw [12]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(raw[:]), nil
 }
 
 func hashToken(token string) string {

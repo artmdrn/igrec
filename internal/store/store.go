@@ -183,6 +183,11 @@ create table if not exists daily_email_sends (
   sent_at datetime not null default current_timestamp,
   primary key(user_id, sent_on)
 );
+create table if not exists email_unsubscribe_tokens (
+  token text primary key,
+  user_id integer not null unique references users(id),
+  created_at datetime not null default current_timestamp
+);
 `
 	if _, err := db.Exec(schema); err != nil {
 		return err
@@ -533,6 +538,40 @@ func (db *DB) SetEmailOptIn(userID int64, emailOptIn bool) error {
 	}
 	_, err := db.Exec(`update users set email_opt_in = ? where id = ?`, optIn, userID)
 	return err
+}
+
+func (db *DB) UnsubscribeTokenForUser(userID int64, tokenFactory func() (string, error)) (string, error) {
+	var existing string
+	err := db.QueryRow(`select token from email_unsubscribe_tokens where user_id = ?`, userID).Scan(&existing)
+	if err == nil {
+		return existing, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return "", err
+	}
+	for tries := 0; tries < 4; tries++ {
+		token, err := tokenFactory()
+		if err != nil {
+			return "", err
+		}
+		_, err = db.Exec(`insert into email_unsubscribe_tokens(token, user_id) values(?, ?)`, token, userID)
+		if err == nil {
+			return token, nil
+		}
+	}
+	return "", errors.New("could not create unsubscribe token")
+}
+
+func (db *DB) UserByUnsubscribeToken(token string) (User, error) {
+	var user User
+	err := db.QueryRow(`
+select users.id, users.username, users.domain, users.email, users.fediverse_acct, users.email_opt_in, users.timestamp_preference, users.migration_target, users.created_at
+from email_unsubscribe_tokens
+join users on users.id = email_unsubscribe_tokens.user_id
+where email_unsubscribe_tokens.token = ?`, token).
+		Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt)
+	user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
+	return user, err
 }
 
 func (db *DB) DailyEmailCandidates(sentOn string, limit int) ([]DailyEmailCandidate, error) {
