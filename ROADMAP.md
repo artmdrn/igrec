@@ -8,7 +8,7 @@ This roadmap is ordered so each step leaves the service more real without turnin
 - Add structured config validation on boot for production-required variables.
 - [x] Add a health endpoint for uptime checks.
 - [x] Add basic request logging and error logs that do not leak secrets.
-- Add a deployment checklist for Oracle, Cloudflare, Resend, and GitHub.
+- [x] Add a deployment checklist for Oracle, Cloudflare, Resend, and GitHub.
 
 Done when:
 
