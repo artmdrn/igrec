@@ -11,14 +11,23 @@
   <link rel="stylesheet" href="/static/igrec.css?v=20260529-ui">
   <script src="/static/passkeys.js?v=20260521" defer></script>
   <title>{{if .PageTitle}}{{.PageTitle}}{{else}}igrec{{end}}</title>
+  {{if .OGURL}}<link rel="canonical" href="{{.OGURL}}">{{end}}
+  <meta property="og:site_name" content="igrec">
   {{if .OGURL}}<meta property="og:url" content="{{.OGURL}}">{{end}}
   <meta property="og:type" content="article">
   <meta property="og:title" content="{{if .PageTitle}}{{.PageTitle}}{{else}}igrec{{end}}">
+  <meta name="twitter:title" content="{{if .PageTitle}}{{.PageTitle}}{{else}}igrec{{end}}">
   {{if .OGDescription}}<meta property="og:description" content="{{.OGDescription}}">{{end}}
+  {{if .OGDescription}}<meta name="twitter:description" content="{{.OGDescription}}">{{end}}
   {{if .OGImage}}
     <meta property="og:image" content="{{.OGImage}}">
+    <meta property="og:image:secure_url" content="{{.OGImage}}">
+    {{if .OGImageType}}<meta property="og:image:type" content="{{.OGImageType}}">{{end}}
+    {{if .OGImageWidth}}<meta property="og:image:width" content="{{.OGImageWidth}}">{{end}}
+    {{if .OGImageHeight}}<meta property="og:image:height" content="{{.OGImageHeight}}">{{end}}
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:image" content="{{.OGImage}}">
+    {{if .OGDescription}}<meta name="twitter:image:alt" content="{{.OGDescription}}">{{end}}
   {{else}}
     <meta name="twitter:card" content="summary">
   {{end}}

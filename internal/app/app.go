@@ -61,7 +61,7 @@ type postView struct {
 	DisplayTime string
 	MachineTime string
 	HasImage    bool
-	CaptionCSS  string
+	CaptionCSS  template.CSS
 }
 
 type inboundAttachment struct {
@@ -283,6 +283,11 @@ func (a *App) profile(w http.ResponseWriter, r *http.Request) {
 		data["OGDescription"] = "@" + post.Username + " said: " + post.Word
 		if post.ImageURL.Valid {
 			data["OGImage"] = absoluteURL(a.cfg.BaseURL, post.ImageURL.String)
+			data["OGImageType"] = "image/jpeg"
+			if width, height, ok := a.imageDimensions(post.ImageURL.String); ok {
+				data["OGImageWidth"] = width
+				data["OGImageHeight"] = height
+			}
 		}
 		a.render(w, r, "post.html", data)
 		return
@@ -1483,14 +1488,14 @@ func (a *App) styledPostViews(posts []store.Post, preference string) []postView 
 	return views
 }
 
-func (a *App) captionStyleForPost(post store.Post) string {
+func (a *App) captionStyleForPost(post store.Post) template.CSS {
 	accent := "#ffd460"
 	text := "#ffffff"
 	if value, ok := a.imagePalette(post.ImageURL.String); ok {
 		accent = value.accent
 		text = value.text
 	}
-	return "color: " + text + "; text-shadow: 0 1px 1px #000, 0 0 24px " + accent + ";"
+	return template.CSS("color: " + text + "; text-shadow: 0 1px 1px #000, 0 0 24px " + accent + ";")
 }
 
 type palette struct {
@@ -1522,6 +1527,27 @@ func (a *App) imagePalette(imageURL string) (palette, bool) {
 		text = "#080a0f"
 	}
 	return palette{accent: accent, text: text}, true
+}
+
+func (a *App) imageDimensions(imageURL string) (int, int, bool) {
+	if !strings.HasPrefix(imageURL, "/uploads/") {
+		return 0, 0, false
+	}
+	filename := filepath.Base(imageURL)
+	if filename == "." || filename == "/" || filename == "" {
+		return 0, 0, false
+	}
+	path := filepath.Join(a.cfg.UploadDir, filename)
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, 0, false
+	}
+	defer f.Close()
+	cfg, _, err := image.DecodeConfig(f)
+	if err != nil {
+		return 0, 0, false
+	}
+	return cfg.Width, cfg.Height, cfg.Width > 0 && cfg.Height > 0
 }
 
 func sampledAccent(img image.Image) (string, float64) {
