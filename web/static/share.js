@@ -42,12 +42,12 @@
         return;
       }
       await navigator.clipboard.writeText(url);
-      flash("скопировано");
+      flash("copied");
     } catch (error) {
       if (error && error.name === "AbortError") return;
       if (!canCopy) return;
       await navigator.clipboard.writeText(url);
-      flash("скопировано");
+      flash("copied");
     }
   });
 })();
