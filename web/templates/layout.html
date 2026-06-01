@@ -8,8 +8,9 @@
   <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png?v=20260521-french">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v=20260521-french">
   <link rel="manifest" href="/manifest.webmanifest?v=20260521-french">
-  <link rel="stylesheet" href="/static/igrec.css?v=20260529-ui">
+  <link rel="stylesheet" href="/static/igrec.css?v=20260601-share">
   <script src="/static/passkeys.js?v=20260521" defer></script>
+  <script src="/static/share.js?v=20260601" defer></script>
   <title>{{if .PageTitle}}{{.PageTitle}}{{else}}igrec{{end}}</title>
   {{if .OGURL}}<link rel="canonical" href="{{.OGURL}}">{{end}}
   <meta property="og:site_name" content="igrec">
@@ -44,6 +45,7 @@
       {{else}}
         <a href="/login">login</a>
       {{end}}
+      <button class="share-button" type="button" data-share hidden>поделиться</button>
     </nav>
   </header>
 {{end}}

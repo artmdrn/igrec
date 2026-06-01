@@ -69,8 +69,21 @@ nav a {
   border-bottom: 2px solid transparent;
 }
 
+nav .share-button {
+  width: auto;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: inherit;
+  text-transform: uppercase;
+}
+
 nav a:hover,
-nav a:focus {
+nav a:focus,
+nav .share-button:hover,
+nav .share-button:focus {
   border-bottom-color: var(--ink);
 }
 
