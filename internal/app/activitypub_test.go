@@ -41,6 +41,12 @@ func TestActivityPubActorIncludesPublicKeyAndMedia(t *testing.T) {
 	if _, ok := actor["image"].(map[string]any); !ok {
 		t.Fatalf("expected image in actor: %#v", actor)
 	}
+	if got, _ := actor["name"].(string); got != "cc00ffee · igrec" {
+		t.Fatalf("unexpected actor name %q", got)
+	}
+	if got, _ := actor["summary"].(string); got == "" {
+		t.Fatalf("expected actor summary")
+	}
 }
 
 func TestActivityPubFollowersCollection(t *testing.T) {

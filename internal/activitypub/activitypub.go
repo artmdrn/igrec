@@ -15,6 +15,8 @@ func Actor(baseURL string, user store.User, publicKeyPEM string) map[string]any 
 		"@context":                  []any{"https://www.w3.org/ns/activitystreams", "https://w3id.org/security/v1"},
 		"id":                        id,
 		"type":                      "Person",
+		"name":                      user.Username + " · igrec",
+		"summary":                   "<p>one word at a time.</p>",
 		"preferredUsername":         user.Username,
 		"inbox":                     id + "/inbox",
 		"outbox":                    id + "/outbox",
@@ -24,12 +26,12 @@ func Actor(baseURL string, user store.User, publicKeyPEM string) map[string]any 
 		"icon": map[string]any{
 			"type":      "Image",
 			"mediaType": "image/png",
-			"url":       strings.TrimRight(baseURL, "/") + "/static/icon-512.png",
+			"url":       strings.TrimRight(baseURL, "/") + "/static/icon-512.png?v=20260601-fediverse",
 		},
 		"image": map[string]any{
 			"type":      "Image",
 			"mediaType": "image/jpeg",
-			"url":       strings.TrimRight(baseURL, "/") + "/static/igrec-logo.jpg",
+			"url":       strings.TrimRight(baseURL, "/") + "/static/igrec-logo.jpg?v=20260601-fediverse",
 		},
 	}
 	if publicKeyPEM != "" {
