@@ -2,6 +2,7 @@ export default {
   async email(message, env) {
     const raw = await new Response(message.raw).text();
     const body = firstTextBody(raw);
+    const attachments = imageAttachments(raw).slice(0, 1);
 
     const response = await fetch(env.IGREC_INBOUND_URL, {
       method: "POST",
@@ -12,7 +13,8 @@ export default {
       body: JSON.stringify({
         from: message.from,
         to: message.to,
-        text: body
+        text: body,
+        attachments
       })
     });
     if (!response.ok) {
@@ -36,6 +38,36 @@ function firstTextBody(raw) {
     }
   }
   return cleanBody(partBody(normalized));
+}
+
+function imageAttachments(raw) {
+  const found = [];
+  collectImageParts(raw.replace(/\r\n/g, "\n"), found, 0);
+  return found;
+}
+
+function collectImageParts(raw, found, depth) {
+  if (depth > 4 || found.length >= 1) return;
+  const headers = headerMap(headerBlock(raw));
+  const contentType = headers.get("content-type") || "";
+  const boundary = boundaryFrom(contentType);
+  if (boundary) {
+    for (const part of multipartParts(raw, boundary)) {
+      collectImageParts(part, found, depth + 1);
+      if (found.length >= 1) return;
+    }
+    return;
+  }
+
+  const partType = contentType.toLowerCase();
+  if (!partType.startsWith("image/jpeg") && !partType.startsWith("image/png")) return;
+  const transfer = (headers.get("content-transfer-encoding") || "").toLowerCase();
+  if (transfer !== "base64") return;
+  found.push({
+    filename: filenameFrom(headers.get("content-disposition") || "") || filenameFrom(contentType),
+    content_type: partType.split(";")[0],
+    data: partBody(raw).replace(/\s/g, "")
+  });
 }
 
 function headerBlock(raw) {
@@ -66,6 +98,11 @@ function headerMap(block) {
 
 function boundaryFrom(contentType) {
   const match = contentType.match(/boundary=(?:"([^"]+)"|([^;\s]+))/i);
+  return match ? (match[1] || match[2]) : "";
+}
+
+function filenameFrom(value) {
+  const match = value.match(/filename=(?:"([^"]+)"|([^;\s]+))/i) || value.match(/name=(?:"([^"]+)"|([^;\s]+))/i);
   return match ? (match[1] || match[2]) : "";
 }
 

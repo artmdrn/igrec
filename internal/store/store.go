@@ -773,6 +773,18 @@ where posts.id = ?`, id).
 	return post, err
 }
 
+func (db *DB) PostByUserWord(username, value string) (Post, error) {
+	var post Post
+	err := db.QueryRow(`
+select posts.id, posts.user_id, users.username, posts.word, posts.image_url, posts.created_at
+from posts join users on users.id = posts.user_id
+where users.username = ? and posts.word = ?
+order by posts.created_at desc, posts.id desc
+limit 1`, username, value).
+		Scan(&post.ID, &post.UserID, &post.Username, &post.Word, &post.ImageURL, &post.CreatedAt)
+	return post, err
+}
+
 func (db *DB) Firehose(limit int) ([]Post, error) {
 	return db.posts(`where 1=1`, limit)
 }

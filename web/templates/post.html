@@ -1,0 +1,17 @@
+{{template "head" .}}
+<main class="feed">
+  <article class="word {{if .Post.HasImage}}word-photo{{end}}">
+    <a class="said" href="/@{{.User.Username}}">@{{.User.Username}}</a>
+    {{if .Post.HasImage}}
+      <a class="photo" href="/@{{.User.Username}}/{{.Post.Word}}">
+        <img src="{{.Post.ImageURL.String}}" alt="">
+        <span class="value caption" style="{{.Post.CaptionCSS}}">{{.Post.Word}}</span>
+      </a>
+      <time datetime="{{.Post.MachineTime}}">{{.Post.DisplayTime}}</time>
+    {{else}}
+      <a class="value" href="/@{{.User.Username}}/{{.Post.Word}}">{{.Post.Word}}</a>
+      <time datetime="{{.Post.MachineTime}}">{{.Post.DisplayTime}}</time>
+    {{end}}
+  </article>
+</main>
+{{template "foot" .}}

@@ -15,7 +15,7 @@ import (
 func TestSaveUploadedImageRejectsUnsupportedType(t *testing.T) {
 	a := &App{cfg: Config{UploadDir: t.TempDir()}}
 	data := []byte("GIF89a")
-	_, err := a.saveUploadedImage(bytes.NewReader(data), &multipart.FileHeader{Size: int64(len(data))}, false, 0.5, 0.5)
+	_, err := a.saveUploadedImage(bytes.NewReader(data), &multipart.FileHeader{Size: int64(len(data))})
 	if err == nil || !strings.Contains(err.Error(), "only JPEG and PNG") {
 		t.Fatalf("expected JPEG/PNG validation error, got %v", err)
 	}
@@ -33,7 +33,7 @@ func TestSaveUploadedImageStoresJpeg(t *testing.T) {
 	if err := png.Encode(&raw, src); err != nil {
 		t.Fatal(err)
 	}
-	url, err := a.saveUploadedImage(bytes.NewReader(raw.Bytes()), &multipart.FileHeader{Size: int64(raw.Len())}, true, 0.8, 0.5)
+	url, err := a.saveUploadedImage(bytes.NewReader(raw.Bytes()), &multipart.FileHeader{Size: int64(raw.Len())})
 	if err != nil {
 		t.Fatal(err)
 	}

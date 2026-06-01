@@ -64,6 +64,12 @@ type postView struct {
 	CaptionCSS  string
 }
 
+type inboundAttachment struct {
+	Filename    string `json:"filename"`
+	ContentType string `json:"content_type"`
+	Data        string `json:"data"`
+}
+
 type archiveMonth struct {
 	Year  string
 	Month string
@@ -260,6 +266,26 @@ func (a *App) profile(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 			return
 		}
+	} else if len(parts) > 1 && parts[1] != "" {
+		value, err := url.PathUnescape(parts[1])
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		post, err := a.db.PostByUserWord(user.Username, value)
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		data := map[string]any{"Post": a.styledPostViews([]store.Post{post}, user.TimestampPreference)[0], "User": user}
+		data["PageTitle"] = post.Word + " by @" + post.Username
+		data["OGURL"] = postURL(a.cfg.BaseURL, post)
+		data["OGDescription"] = "@" + post.Username + " said: " + post.Word
+		if post.ImageURL.Valid {
+			data["OGImage"] = absoluteURL(a.cfg.BaseURL, post.ImageURL.String)
+		}
+		a.render(w, r, "post.html", data)
+		return
 	}
 	data := map[string]any{"User": user, "Posts": a.styledPostViews(posts, user.TimestampPreference), "Months": months, "Title": title}
 	if viewer, ok := a.currentUser(r); ok && viewer.ID != user.ID {
@@ -297,10 +323,7 @@ func (a *App) write(w http.ResponseWriter, r *http.Request) {
 		imageFile, imageHeader, err := r.FormFile("image_file")
 		if err == nil {
 			defer imageFile.Close()
-			focusObject := r.FormValue("focus_object") == "on"
-			focusX := parseUnitFloat(r.FormValue("focus_x"), 0.5)
-			focusY := parseUnitFloat(r.FormValue("focus_y"), 0.5)
-			uploaded, uploadErr := a.saveUploadedImage(imageFile, imageHeader, focusObject, focusX, focusY)
+			uploaded, uploadErr := a.saveUploadedImage(imageFile, imageHeader)
 			if uploadErr != nil {
 				a.render(w, r, "write.html", a.withCSRF(w, r, map[string]any{
 					"Error": uploadErr.Error(),
@@ -341,7 +364,7 @@ func parseUnitFloat(raw string, fallback float64) float64 {
 	return value
 }
 
-func (a *App) saveUploadedImage(file io.Reader, header *multipart.FileHeader, focusObject bool, focusX, focusY float64) (string, error) {
+func (a *App) saveUploadedImage(file io.Reader, header *multipart.FileHeader) (string, error) {
 	if header.Size > maxUploadBytes {
 		return "", errors.New("image must be 8MB or smaller")
 	}
@@ -352,6 +375,10 @@ func (a *App) saveUploadedImage(file io.Reader, header *multipart.FileHeader, fo
 	if int64(len(raw)) > maxUploadBytes {
 		return "", errors.New("image must be 8MB or smaller")
 	}
+	return a.storeImageBytes(raw)
+}
+
+func (a *App) storeImageBytes(raw []byte) (string, error) {
 	contentType := http.DetectContentType(raw)
 	if contentType != "image/jpeg" && contentType != "image/png" {
 		return "", errors.New("only JPEG and PNG are supported")
@@ -366,9 +393,6 @@ func (a *App) saveUploadedImage(file io.Reader, header *multipart.FileHeader, fo
 	bounds := img.Bounds()
 	if bounds.Dx() < 24 || bounds.Dy() < 24 {
 		return "", errors.New("image is too small")
-	}
-	if focusObject {
-		img = cropSquareAroundFocus(img, focusX, focusY)
 	}
 	img = downscaleWithin(img, 1440)
 	token, _, err := newToken()
@@ -973,9 +997,10 @@ func (a *App) inboundEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var payload struct {
-		From string `json:"from"`
-		To   string `json:"to"`
-		Text string `json:"text"`
+		From        string              `json:"from"`
+		To          string              `json:"to"`
+		Text        string              `json:"text"`
+		Attachments []inboundAttachment `json:"attachments"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -991,7 +1016,24 @@ func (a *App) inboundEmail(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "sender is not an igrec user", http.StatusNotFound)
 		return
 	}
-	post, err := a.db.CreatePost(user.ID, value, nil)
+	var imageURL *string
+	for _, attachment := range payload.Attachments {
+		raw, err := base64.StdEncoding.DecodeString(attachment.Data)
+		if err != nil {
+			continue
+		}
+		if contentType := http.DetectContentType(raw); contentType != "image/jpeg" && contentType != "image/png" {
+			continue
+		}
+		uploaded, err := a.storeImageBytes(raw)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		imageURL = &uploaded
+		break
+	}
+	post, err := a.db.CreatePost(user.ID, value, imageURL)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -1188,6 +1230,13 @@ func activitypubOutbox(baseURL string, posts []store.Post) map[string]any {
 
 func postURL(baseURL string, post store.Post) string {
 	return strings.TrimRight(baseURL, "/") + "/@" + url.PathEscape(post.Username) + "/" + url.PathEscape(post.Word)
+}
+
+func absoluteURL(baseURL, value string) string {
+	if strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://") {
+		return value
+	}
+	return strings.TrimRight(baseURL, "/") + "/" + strings.TrimLeft(value, "/")
 }
 
 func (a *App) currentUser(r *http.Request) (store.User, bool) {

@@ -300,7 +300,6 @@ h1 {
   background:
     radial-gradient(circle at 20% 20%, #fff, #e7d9b6 35%, #e2d0ab 100%);
   overflow: hidden;
-  cursor: crosshair;
 }
 
 .compose-preview.ready {
@@ -319,23 +318,6 @@ h1 {
   inset: auto .7rem .7rem .7rem;
   font-size: .82rem;
   text-transform: uppercase;
-}
-
-.focus-toggle {
-  font-size: .88rem;
-  letter-spacing: .02em;
-}
-
-.focus-pin {
-  position: absolute;
-  width: 34px;
-  height: 34px;
-  transform: translate(-50%, -50%);
-  border: 3px solid #fff;
-  border-radius: 999px;
-  background: transparent;
-  box-shadow: 0 0 0 2px #111;
-  pointer-events: none;
 }
 
 input,

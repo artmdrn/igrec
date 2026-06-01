@@ -10,7 +10,18 @@
   <link rel="manifest" href="/manifest.webmanifest?v=20260521-french">
   <link rel="stylesheet" href="/static/igrec.css?v=20260529-ui">
   <script src="/static/passkeys.js?v=20260521" defer></script>
-  <title>igrec</title>
+  <title>{{if .PageTitle}}{{.PageTitle}}{{else}}igrec{{end}}</title>
+  {{if .OGURL}}<meta property="og:url" content="{{.OGURL}}">{{end}}
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="{{if .PageTitle}}{{.PageTitle}}{{else}}igrec{{end}}">
+  {{if .OGDescription}}<meta property="og:description" content="{{.OGDescription}}">{{end}}
+  {{if .OGImage}}
+    <meta property="og:image" content="{{.OGImage}}">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content="{{.OGImage}}">
+  {{else}}
+    <meta name="twitter:card" content="summary">
+  {{end}}
 </head>
 <body>
   <header class="mast">
