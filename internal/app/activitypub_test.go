@@ -47,6 +47,12 @@ func TestActivityPubActorIncludesPublicKeyAndMedia(t *testing.T) {
 	if got, _ := actor["summary"].(string); got == "" {
 		t.Fatalf("expected actor summary")
 	}
+	if got, _ := actor["followers"].(string); got != "http://localhost:8080/ap/users/cc00ffee/followers" {
+		t.Fatalf("unexpected followers URL %q", got)
+	}
+	if got, _ := actor["following"].(string); got != "http://localhost:8080/ap/users/cc00ffee/following" {
+		t.Fatalf("unexpected following URL %q", got)
+	}
 }
 
 func TestActivityPubFollowersCollection(t *testing.T) {
@@ -68,5 +74,23 @@ func TestActivityPubFollowersCollection(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), `"totalItems":1`) {
 		t.Fatalf("expected one follower, got %s", w.Body.String())
+	}
+}
+
+func TestActivityPubFollowingCollection(t *testing.T) {
+	a := testApp(t)
+	if _, err := a.db.CreateUser("cc00ffee", "cc@example.com"); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/ap/users/cc00ffee/following", nil)
+	w := httptest.NewRecorder()
+	a.actor(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+	if !strings.Contains(w.Body.String(), `"totalItems":0`) {
+		t.Fatalf("expected zero following, got %s", w.Body.String())
 	}
 }

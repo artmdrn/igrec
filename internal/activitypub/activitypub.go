@@ -20,6 +20,8 @@ func Actor(baseURL string, user store.User, publicKeyPEM string) map[string]any 
 		"preferredUsername":         user.Username,
 		"inbox":                     id + "/inbox",
 		"outbox":                    id + "/outbox",
+		"followers":                 id + "/followers",
+		"following":                 id + "/following",
 		"url":                       profileURL(baseURL, user.Username),
 		"manuallyApprovesFollowers": false,
 		"discoverable":              true,

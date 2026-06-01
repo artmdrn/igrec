@@ -1265,6 +1265,15 @@ func (a *App) actor(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	if len(parts) > 1 && parts[1] == "following" {
+		writeJSON(w, "application/activity+json; charset=utf-8", map[string]any{
+			"@context":   "https://www.w3.org/ns/activitystreams",
+			"id":         activitypubActorID(a.cfg.BaseURL, user.Username) + "/following",
+			"type":       "OrderedCollection",
+			"totalItems": 0,
+		})
+		return
+	}
 	if len(parts) > 1 && parts[1] == "outbox" {
 		posts, err := a.db.PostsByUser(user.Username, 20)
 		if err != nil {
@@ -1343,6 +1352,7 @@ func (a *App) acceptActivityPubFollow(w http.ResponseWriter, r *http.Request, us
 	if err := a.deliverActivity(user, inbox, accept); err != nil {
 		log.Printf("activitypub accept delivery failed user=%s inbox=%s err=%v", user.Username, inbox, err)
 	}
+	go a.deliverRecentPostsToInbox(user, inbox, 5)
 	w.WriteHeader(http.StatusAccepted)
 }
 
@@ -1375,6 +1385,24 @@ func (a *App) deliverPost(post store.Post) {
 	for _, follower := range followers {
 		if err := a.deliverActivity(user, follower.Inbox, create); err != nil {
 			log.Printf("activitypub create delivery failed post=%d actor=%s inbox=%s err=%v", post.ID, follower.Actor, follower.Inbox, err)
+		}
+	}
+}
+
+func (a *App) deliverRecentPostsToInbox(user store.User, inbox string, limit int) {
+	if limit <= 0 {
+		return
+	}
+	posts, err := a.db.PostsByUser(user.Username, limit)
+	if err != nil {
+		log.Printf("activitypub backfill posts failed user=%s err=%v", user.Username, err)
+		return
+	}
+	// Deliver oldest first so a new follower sees the arrival packet in natural order.
+	for i := len(posts) - 1; i >= 0; i-- {
+		post := posts[i]
+		if err := a.deliverActivity(user, inbox, activitypub.Create(a.cfg.BaseURL, post)); err != nil {
+			log.Printf("activitypub backfill delivery failed user=%s post=%d inbox=%s err=%v", user.Username, post.ID, inbox, err)
 		}
 	}
 }
