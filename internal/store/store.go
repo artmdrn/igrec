@@ -60,6 +60,17 @@ type WebAuthnSession struct {
 	ExpiresAt time.Time
 }
 
+type ActivityPubKey struct {
+	UserID        int64
+	PrivateKeyPEM string
+	PublicKeyPEM  string
+}
+
+type ActivityPubFollower struct {
+	Actor string
+	Inbox string
+}
+
 func Open(databaseURL string) (*DB, error) {
 	driver, dsn, err := parseDatabaseURL(databaseURL)
 	if err != nil {
@@ -170,6 +181,12 @@ create table if not exists follows (
   inbox_url text not null,
   created_at datetime not null default current_timestamp,
   unique(follower_actor, user_id)
+);
+create table if not exists activitypub_keys (
+  user_id integer primary key references users(id),
+  private_key_pem text not null,
+  public_key_pem text not null,
+  created_at datetime not null default current_timestamp
 );
 create table if not exists user_follows (
   follower_user_id integer not null references users(id),
@@ -400,6 +417,48 @@ func (db *DB) UserFollows(followerID, followedID int64) (bool, error) {
 		return false, nil
 	}
 	return err == nil, err
+}
+
+func (db *DB) ActivityPubKey(userID int64) (ActivityPubKey, error) {
+	var key ActivityPubKey
+	err := db.QueryRow(`select user_id, private_key_pem, public_key_pem from activitypub_keys where user_id = ?`, userID).
+		Scan(&key.UserID, &key.PrivateKeyPEM, &key.PublicKeyPEM)
+	return key, err
+}
+
+func (db *DB) CreateActivityPubKey(userID int64, privateKeyPEM, publicKeyPEM string) error {
+	_, err := db.Exec(`insert into activitypub_keys(user_id, private_key_pem, public_key_pem) values(?, ?, ?)
+on conflict(user_id) do update set private_key_pem = excluded.private_key_pem, public_key_pem = excluded.public_key_pem`, userID, privateKeyPEM, publicKeyPEM)
+	return err
+}
+
+func (db *DB) UpsertActivityPubFollower(userID int64, actor, inbox string) error {
+	_, err := db.Exec(`insert into follows(follower_actor, user_id, inbox_url) values(?, ?, ?)
+on conflict(follower_actor, user_id) do update set inbox_url = excluded.inbox_url`, actor, userID, inbox)
+	return err
+}
+
+func (db *DB) DeleteActivityPubFollower(userID int64, actor string) error {
+	_, err := db.Exec(`delete from follows where user_id = ? and follower_actor = ?`, userID, actor)
+	return err
+}
+
+func (db *DB) ActivityPubFollowers(userID int64) ([]ActivityPubFollower, error) {
+	rows, err := db.Query(`select follower_actor, inbox_url from follows where user_id = ? order by created_at asc`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var followers []ActivityPubFollower
+	for rows.Next() {
+		var follower ActivityPubFollower
+		if err := rows.Scan(&follower.Actor, &follower.Inbox); err != nil {
+			return nil, err
+		}
+		followers = append(followers, follower)
+	}
+	return followers, rows.Err()
 }
 
 func (db *DB) UserFriends(userID int64) ([]User, error) {
