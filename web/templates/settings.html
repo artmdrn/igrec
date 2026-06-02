@@ -34,7 +34,12 @@
     {{end}}
     <a class="button" href="/logout">logout</a>
     <a class="button" href="/settings/export">export</a>
-    <p class="muted">migration and deletion controls are not enabled yet</p>
+    <section class="settings-section danger-zone">
+      <h2>delete account</h2>
+      <p class="muted">type <strong>{{.User.Username}}</strong> to permanently delete your account, words, invites, follows, and sessions.</p>
+      <label>confirm username <input name="confirm_username" autocomplete="off" spellcheck="false"></label>
+      <button type="submit" name="action" value="delete-account">delete account</button>
+    </section>
   </form>
 </main>
 {{template "foot" .}}

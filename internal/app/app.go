@@ -799,6 +799,20 @@ func (a *App) settings(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
+		if r.FormValue("action") == "delete-account" {
+			confirmation := strings.TrimSpace(r.FormValue("confirm_username"))
+			if confirmation != user.Username {
+				a.render(w, r, "settings.html", a.withCSRF(w, r, a.settingsData(user, map[string]any{"Error": "type your username to delete this account"})))
+				return
+			}
+			if err := a.db.DeleteUser(user.ID); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: a.secureCookies()})
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+			return
+		}
 		if r.FormValue("action") == "invite" {
 			created, err := a.db.InviteCountByInviter(user.ID)
 			if err != nil {

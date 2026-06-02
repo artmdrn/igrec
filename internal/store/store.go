@@ -599,6 +599,55 @@ func (db *DB) SetEmailOptIn(userID int64, emailOptIn bool) error {
 	return err
 }
 
+func (db *DB) DeleteUser(userID int64) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	statements := []string{
+		`delete from sessions where user_id = ?`,
+		`delete from login_tokens where user_id = ?`,
+		`delete from email_change_tokens where user_id = ?`,
+		`delete from passkeys where user_id = ?`,
+		`delete from webauthn_sessions where user_id = ?`,
+		`delete from posts where user_id = ?`,
+		`delete from follows where user_id = ?`,
+		`delete from activitypub_keys where user_id = ?`,
+		`delete from user_follows where follower_user_id = ? or followed_user_id = ?`,
+		`delete from daily_email_sends where user_id = ?`,
+		`delete from email_unsubscribe_tokens where user_id = ?`,
+		`delete from invite_grants where user_id = ?`,
+		`delete from invites where inviter_id = ?`,
+	}
+	for _, stmt := range statements {
+		args := []any{userID}
+		if strings.Count(stmt, "?") == 2 {
+			args = append(args, userID)
+		}
+		if _, err := tx.Exec(stmt, args...); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(`update invites set used_by = null where used_by = ?`, userID); err != nil {
+		return err
+	}
+
+	res, err := tx.Exec(`delete from users where id = ?`, userID)
+	if err != nil {
+		return err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+	return tx.Commit()
+}
+
 func (db *DB) UnsubscribeTokenForUser(userID int64, tokenFactory func() (string, error)) (string, error) {
 	var existing string
 	err := db.QueryRow(`select token from email_unsubscribe_tokens where user_id = ?`, userID).Scan(&existing)

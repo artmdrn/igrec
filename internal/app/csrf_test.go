@@ -168,6 +168,113 @@ func TestOperatorInvitesCreatesInvite(t *testing.T) {
 	}
 }
 
+func TestSettingsDeleteAccountRequiresMatchingUsername(t *testing.T) {
+	a := testApp(t)
+	user, err := a.db.CreateUser("member", "member@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionToken, sessionHash, err := newToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.CreateSession(sessionHash, user.ID, farFuture()); err != nil {
+		t.Fatal(err)
+	}
+
+	wGet := httptest.NewRecorder()
+	reqGet := httptest.NewRequest(http.MethodGet, "/settings", nil)
+	reqGet.AddCookie(&http.Cookie{Name: sessionCookie, Value: sessionToken})
+	a.settings(wGet, reqGet)
+
+	csrf := cookieByName(wGet.Result(), csrfCookie)
+	if csrf == nil || csrf.Value == "" {
+		t.Fatal("expected csrf cookie from GET /settings")
+	}
+
+	form := url.Values{}
+	form.Set("action", "delete-account")
+	form.Set("confirm_username", "wrong")
+	form.Set(csrfField, csrf.Value)
+	reqPost := httptest.NewRequest(http.MethodPost, "/settings", strings.NewReader(form.Encode()))
+	reqPost.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	reqPost.AddCookie(&http.Cookie{Name: sessionCookie, Value: sessionToken})
+	reqPost.AddCookie(csrf)
+	wPost := httptest.NewRecorder()
+
+	a.settings(wPost, reqPost)
+
+	if wPost.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, wPost.Code)
+	}
+	body, err := io.ReadAll(wPost.Result().Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "type your username to delete this account") {
+		t.Fatalf("expected delete confirmation error, got %q", string(body))
+	}
+	if _, err := a.db.UserByID(user.ID); err != nil {
+		t.Fatalf("expected user to remain after failed confirmation, got %v", err)
+	}
+}
+
+func TestSettingsDeleteAccountRemovesUserAndSession(t *testing.T) {
+	a := testApp(t)
+	user, err := a.db.CreateUser("member", "member@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionToken, sessionHash, err := newToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.CreateSession(sessionHash, user.ID, farFuture()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.CreatePost(user.ID, "ember", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	wGet := httptest.NewRecorder()
+	reqGet := httptest.NewRequest(http.MethodGet, "/settings", nil)
+	reqGet.AddCookie(&http.Cookie{Name: sessionCookie, Value: sessionToken})
+	a.settings(wGet, reqGet)
+
+	csrf := cookieByName(wGet.Result(), csrfCookie)
+	if csrf == nil || csrf.Value == "" {
+		t.Fatal("expected csrf cookie from GET /settings")
+	}
+
+	form := url.Values{}
+	form.Set("action", "delete-account")
+	form.Set("confirm_username", user.Username)
+	form.Set(csrfField, csrf.Value)
+	reqPost := httptest.NewRequest(http.MethodPost, "/settings", strings.NewReader(form.Encode()))
+	reqPost.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	reqPost.AddCookie(&http.Cookie{Name: sessionCookie, Value: sessionToken})
+	reqPost.AddCookie(csrf)
+	wPost := httptest.NewRecorder()
+
+	a.settings(wPost, reqPost)
+
+	if wPost.Code != http.StatusSeeOther {
+		t.Fatalf("expected status %d, got %d", http.StatusSeeOther, wPost.Code)
+	}
+	if location := wPost.Result().Header.Get("Location"); location != "/" {
+		t.Fatalf("expected redirect to /, got %q", location)
+	}
+	if _, err := a.db.UserByID(user.ID); err == nil {
+		t.Fatal("expected user to be deleted")
+	}
+	if _, ok := a.currentUser(httptest.NewRequest(http.MethodGet, "/", nil)); ok {
+		t.Fatal("unexpected authenticated user without session cookie")
+	}
+	if _, err := a.db.UserBySessionHash(hashToken(sessionToken)); err == nil {
+		t.Fatal("expected session to be deleted")
+	}
+}
+
 func cookieByName(resp *http.Response, name string) *http.Cookie {
 	for _, c := range resp.Cookies() {
 		if c.Name == name {
