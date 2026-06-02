@@ -105,6 +105,16 @@ type apiPostView struct {
 	CreatedAt string  `json:"created_at"`
 }
 
+type uploadStorageStats struct {
+	FileCount        int
+	Bytes            int64
+	FormattedBytes   string
+	AverageBytes     int64
+	FormattedAverage string
+	WatchLevel       string
+	WatchMessage     string
+}
+
 const sessionCookie = "igrec_session"
 const csrfCookie = "igrec_csrf"
 const csrfField = "csrf_token"
@@ -1685,11 +1695,68 @@ func (a *App) settingsData(user store.User, extra map[string]any) map[string]any
 	if friends, err := a.db.UserFriends(user.ID); err == nil {
 		data["Friends"] = friends
 	}
+	if _, ok := a.operatorEmails[strings.ToLower(user.Email)]; ok {
+		data["IsOperator"] = true
+		data["UploadStorage"] = a.uploadStorageStats()
+	}
 
 	for key, value := range extra {
 		data[key] = value
 	}
 	return data
+}
+
+func (a *App) uploadStorageStats() uploadStorageStats {
+	var stats uploadStorageStats
+	err := filepath.WalkDir(a.cfg.UploadDir, func(path string, entry os.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return nil
+		}
+		stats.FileCount++
+		stats.Bytes += info.Size()
+		return nil
+	})
+	if err != nil {
+		stats.WatchLevel = "error"
+		stats.WatchMessage = "upload storage unavailable"
+		return stats
+	}
+	if stats.FileCount > 0 {
+		stats.AverageBytes = stats.Bytes / int64(stats.FileCount)
+	}
+	stats.FormattedBytes = formatBytes(stats.Bytes)
+	stats.FormattedAverage = formatBytes(stats.AverageBytes)
+	switch {
+	case stats.Bytes >= 20*1024*1024*1024:
+		stats.WatchLevel = "move"
+		stats.WatchMessage = "move images to object storage"
+	case stats.Bytes >= 5*1024*1024*1024:
+		stats.WatchLevel = "watch"
+		stats.WatchMessage = "prepare R2 migration"
+	default:
+		stats.WatchLevel = "ok"
+		stats.WatchMessage = "local storage is fine"
+	}
+	return stats
+}
+
+func formatBytes(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return strconv.FormatInt(bytes, 10) + " B"
+	}
+	value := float64(bytes)
+	for _, suffix := range []string{"KB", "MB", "GB", "TB"} {
+		value /= unit
+		if value < unit {
+			return strconv.FormatFloat(value, 'f', 1, 64) + " " + suffix
+		}
+	}
+	return strconv.FormatFloat(value, 'f', 1, 64) + " PB"
 }
 
 func writeJSON(w http.ResponseWriter, contentType string, data any) {

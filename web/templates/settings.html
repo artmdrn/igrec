@@ -32,6 +32,13 @@
         {{end}}
       </section>
     {{end}}
+    {{if .IsOperator}}
+      <section class="settings-section">
+        <h2>storage</h2>
+        <p class="muted">{{.UploadStorage.FileCount}} images · {{.UploadStorage.FormattedBytes}} total · {{.UploadStorage.FormattedAverage}} average</p>
+        <p class="system-message">{{.UploadStorage.WatchMessage}}</p>
+      </section>
+    {{end}}
     <a class="button" href="/logout">logout</a>
     <a class="button" href="/settings/export">export</a>
     <section class="settings-section danger-zone">
