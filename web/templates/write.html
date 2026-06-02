@@ -3,19 +3,19 @@
   <form method="post" action="/write" enctype="multipart/form-data" class="compose" data-compose>
     {{if .Error}}<p class="error system-message">{{.Error}}</p>{{end}}
     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-    <input name="word" value="{{.Word}}" maxlength="50" autocomplete="off" autofocus required aria-label="word">
     <section class="compose-photo">
       <label class="upload-input">
         image
-        <input name="image_file" type="file" accept="image/jpeg,image/png" data-image-file>
+        <input name="image_file" type="file" accept="image/jpeg,image/png" capture="environment" data-image-file>
       </label>
       <div class="compose-preview" data-preview-wrap>
         <img alt="" data-preview-image hidden>
         <p class="system-message compose-empty" data-preview-empty>optional image</p>
       </div>
     </section>
+    <input name="word" value="{{.Word}}" maxlength="50" autocomplete="off" placeholder="word" required aria-label="word" data-word-input>
     <button type="submit">post</button>
   </form>
 </main>
-<script src="/static/compose.js?v=20260601" defer></script>
+<script src="/static/compose.js?v=20260602-ritual" defer></script>
 {{template "foot" .}}

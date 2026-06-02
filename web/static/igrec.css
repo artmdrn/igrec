@@ -269,7 +269,7 @@ h1 {
 .settings form {
   display: grid;
   gap: .75rem;
-  margin-top: 12vh;
+  margin-top: clamp(1rem, 5vh, 4rem);
 }
 
 .settings-section {
@@ -295,6 +295,65 @@ h1 {
   background:
     linear-gradient(140deg, #fff7cf 0%, #ffe9db 42%, #f9f0ff 100%);
   box-shadow: 10px 10px 0 #111;
+}
+
+.posted {
+  min-height: calc(100vh - 5rem);
+  display: grid;
+  place-items: center;
+}
+
+.posted-card {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: min(100%, 860px);
+  min-height: min(70vh, 680px);
+  padding: 1rem;
+  border: 3px solid var(--ink);
+  background:
+    repeating-linear-gradient(0deg, rgba(0,0,0,.05), rgba(0,0,0,.05) 1px, transparent 1px, transparent 8px),
+    #fffef7;
+  overflow: hidden;
+  box-shadow: 10px 10px 0 var(--ink);
+}
+
+.posted-card img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: contrast(1.08) saturate(1.02) brightness(.78);
+}
+
+.posted-word {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  font-size: clamp(3.6rem, 17vw, 13rem);
+  font-weight: 900;
+  line-height: .82;
+  text-align: center;
+  text-shadow: 5px 0 var(--red), -5px 0 var(--blue);
+}
+
+.posted-photo .posted-word {
+  align-self: end;
+  justify-self: start;
+  text-align: left;
+  text-shadow: 0 1px 1px #000, 0 0 24px var(--blue);
+}
+
+.posted-link {
+  position: absolute;
+  right: .8rem;
+  bottom: .7rem;
+  z-index: 2;
+  border-bottom: 2px solid var(--ink);
+  text-transform: uppercase;
 }
 
 .compose-photo {

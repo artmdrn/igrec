@@ -8,6 +8,7 @@
   const previewWrap = root.querySelector("[data-preview-wrap]");
   const previewImage = root.querySelector("[data-preview-image]");
   const previewEmpty = root.querySelector("[data-preview-empty]");
+  const wordInput = root.querySelector("[data-word-input]");
 
   fileInput.addEventListener("change", () => {
     const file = fileInput.files && fileInput.files[0];
@@ -17,5 +18,6 @@
     previewImage.hidden = false;
     previewEmpty.hidden = true;
     previewWrap.classList.add("ready");
+    if (wordInput) wordInput.focus();
   });
 })();

@@ -518,7 +518,15 @@ func (a *App) write(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		go a.deliverPost(post)
-		http.Redirect(w, r, "/@"+url.PathEscape(post.Username)+"/"+url.PathEscape(post.Word), http.StatusSeeOther)
+		postPath := "/@" + url.PathEscape(post.Username) + "/" + url.PathEscape(post.Word)
+		data := map[string]any{
+			"PageTitle":      post.Word,
+			"Post":           a.styledPostViews([]store.Post{post}, user.TimestampPreference)[0],
+			"PostURL":        postPath,
+			"RefreshURL":     postPath,
+			"RefreshSeconds": 6,
+		}
+		a.render(w, r, "posted.html", a.withCSRF(w, r, data))
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
