@@ -35,6 +35,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/golang/freetype"
@@ -67,6 +68,7 @@ type App struct {
 	db             *store.DB
 	templates      *template.Template
 	operatorEmails map[string]struct{}
+	limiter        *rateLimiter
 }
 
 type postView struct {
@@ -143,12 +145,23 @@ type remoteActor struct {
 	} `json:"endpoints"`
 }
 
+type rateLimiter struct {
+	mu      sync.Mutex
+	buckets map[string]rateBucket
+}
+
+type rateBucket struct {
+	ResetAt time.Time
+	Count   int
+}
+
 func New(cfg Config, db *store.DB) http.Handler {
 	app := &App{
 		cfg:            cfg,
 		db:             db,
 		templates:      template.Must(template.ParseGlob("web/templates/*.html")),
 		operatorEmails: make(map[string]struct{}),
+		limiter:        &rateLimiter{buckets: make(map[string]rateBucket)},
 	}
 	for _, email := range cfg.OperatorEmails {
 		normalized := strings.ToLower(strings.TrimSpace(email))
@@ -494,6 +507,10 @@ func (a *App) write(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		if !a.validCSRF(r) {
 			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		if !a.allowRate("write:user:"+strconv.FormatInt(user.ID, 10), 60, time.Hour) || !a.allowRate("write:ip:"+clientKey(r), 120, time.Hour) {
+			http.Error(w, "rate limited", http.StatusTooManyRequests)
 			return
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes+2<<20)
@@ -1031,6 +1048,10 @@ func (a *App) login(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		email := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
+		if !a.allowRate("login:"+clientKey(r)+":"+email, 5, 10*time.Minute) {
+			http.Error(w, "too many login emails", http.StatusTooManyRequests)
+			return
+		}
 		next := safeNext(r.FormValue("next"))
 		user, err := a.db.UserByEmail(email)
 		if err != nil {
@@ -1202,6 +1223,10 @@ func (a *App) inboundEmail(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
+	if !a.allowRate("inbound:"+clientKey(r), 60, time.Minute) {
+		http.Error(w, "rate limited", http.StatusTooManyRequests)
+		return
+	}
 	var payload struct {
 		From        string              `json:"from"`
 		To          string              `json:"to"`
@@ -1330,6 +1355,10 @@ func (a *App) actor(w http.ResponseWriter, r *http.Request) {
 func (a *App) activityPubInbox(w http.ResponseWriter, r *http.Request, user store.User) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !a.allowRate("ap-inbox:"+user.Username+":"+clientKey(r), 120, time.Minute) {
+		http.Error(w, "rate limited", http.StatusTooManyRequests)
 		return
 	}
 	var activity activityPubActivity
@@ -1666,6 +1695,61 @@ func (a *App) validCSRF(r *http.Request) bool {
 		return false
 	}
 	return subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(formToken)) == 1
+}
+
+func (a *App) allowRate(key string, limit int, window time.Duration) bool {
+	if a.limiter == nil {
+		return true
+	}
+	return a.limiter.allow(key, limit, window)
+}
+
+func (l *rateLimiter) allow(key string, limit int, window time.Duration) bool {
+	if limit <= 0 || window <= 0 {
+		return true
+	}
+	now := time.Now()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if len(l.buckets) > 10000 {
+		for key, bucket := range l.buckets {
+			if !bucket.ResetAt.After(now) {
+				delete(l.buckets, key)
+			}
+		}
+	}
+	bucket := l.buckets[key]
+	if !bucket.ResetAt.After(now) {
+		bucket = rateBucket{ResetAt: now.Add(window)}
+	}
+	if bucket.Count >= limit {
+		l.buckets[key] = bucket
+		return false
+	}
+	bucket.Count++
+	l.buckets[key] = bucket
+	return true
+}
+
+func clientKey(r *http.Request) string {
+	for _, header := range []string{"CF-Connecting-IP", "X-Real-IP"} {
+		if value := strings.TrimSpace(r.Header.Get(header)); value != "" {
+			return value
+		}
+	}
+	if forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); forwarded != "" {
+		if first := strings.TrimSpace(strings.Split(forwarded, ",")[0]); first != "" {
+			return first
+		}
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err == nil && host != "" {
+		return host
+	}
+	if r.RemoteAddr != "" {
+		return r.RemoteAddr
+	}
+	return "unknown"
 }
 
 func (a *App) settingsData(user store.User, extra map[string]any) map[string]any {

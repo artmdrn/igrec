@@ -42,9 +42,6 @@ func (c Config) Validate() error {
 		if strings.TrimSpace(c.AppSecret) == "" {
 			return errors.New("APP_SECRET is required for production")
 		}
-		if len(c.OperatorEmails) == 0 {
-			return errors.New("OPERATOR_EMAILS is required for production")
-		}
 		if strings.TrimSpace(c.ResendAPIKey) == "" {
 			return errors.New("RESEND_API_KEY is required for production")
 		}

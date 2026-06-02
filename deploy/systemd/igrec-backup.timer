@@ -1,0 +1,10 @@
+[Unit]
+Description=Run igrec SQLite backup
+
+[Timer]
+OnCalendar=*-*-* 03:10:00 Europe/Paris
+Persistent=true
+Unit=igrec-backup.service
+
+[Install]
+WantedBy=timers.target

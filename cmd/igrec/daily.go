@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"time"
 
 	"igrec.net/igrec/internal/app"
@@ -46,4 +47,31 @@ func sendDailyEmails(cfg app.Config, db *store.DB) (int, error) {
 		sent++
 	}
 	return sent, nil
+}
+
+func printDailyEmailStatus(db *store.DB) error {
+	sentOn := time.Now().UTC().Format(time.DateOnly)
+	candidates, err := db.DailyEmailCandidates(sentOn, 1000)
+	if err != nil {
+		return err
+	}
+	withPost := 0
+	first := 0
+	for _, candidate := range candidates {
+		if candidate.Post.Valid {
+			withPost++
+		}
+		if candidate.SentCount == 0 {
+			first++
+		}
+	}
+	log.Printf("daily email pending=%d with_word=%d first_email=%d sent_on=%s", len(candidates), withPost, first, sentOn)
+	for _, candidate := range candidates {
+		word := ""
+		if candidate.Post.Valid {
+			word = " @" + candidate.Post.V.Username + " " + candidate.Post.V.Word
+		}
+		log.Printf("daily email candidate user=@%s email=%s sent_count=%d%s", candidate.User.Username, candidate.User.Email, candidate.SentCount, word)
+	}
+	return nil
 }

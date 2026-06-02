@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -55,6 +56,24 @@ func main() {
 				log.Fatal(err)
 			}
 			log.Printf("daily email sent to %d users", sent)
+			return
+		case "daily-email-status":
+			if err := printDailyEmailStatus(db); err != nil {
+				log.Fatal(err)
+			}
+			return
+		case "backup-sqlite":
+			keep := 14
+			if raw := os.Getenv("BACKUP_KEEP"); raw != "" {
+				if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+					keep = parsed
+				}
+			}
+			path, err := backupSQLite(db, cfg.DatabaseURL, env("BACKUP_DIR", "data/backups"), keep)
+			if err != nil {
+				log.Fatal(err)
+			}
+			log.Printf("sqlite backup written to %s", path)
 			return
 		default:
 			log.Fatalf("unknown command %q", os.Args[1])

@@ -1,0 +1,18 @@
+[Unit]
+Description=igrec SQLite backup
+After=igrec.service
+
+[Service]
+Type=oneshot
+User=igrec
+Group=igrec
+WorkingDirectory=/opt/igrec/src
+EnvironmentFile=/opt/igrec/.env
+Environment=UPLOAD_DIR=/opt/igrec/data/uploads
+Environment=BACKUP_DIR=/opt/igrec/data/backups
+Environment=BACKUP_KEEP=30
+ExecStart=/opt/igrec/bin/igrec backup-sqlite
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/igrec/data
