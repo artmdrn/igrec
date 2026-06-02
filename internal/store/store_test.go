@@ -73,6 +73,9 @@ func TestDeleteUserRemovesDependentRecords(t *testing.T) {
 	if err := db.CreateActivityPubKey(user.ID, "private", "public"); err != nil {
 		t.Fatal(err)
 	}
+	if err := db.CreateAPIToken(user.ID, "api-hash", "api-prefix", "cli"); err != nil {
+		t.Fatal(err)
+	}
 	if err := db.UpsertActivityPubFollower(user.ID, "https://remote.example/@follower", "https://remote.example/inbox"); err != nil {
 		t.Fatal(err)
 	}
@@ -102,5 +105,40 @@ func TestDeleteUserRemovesDependentRecords(t *testing.T) {
 	}
 	if invite.UsedBy.Valid {
 		t.Fatalf("expected redeemed invite to be detached from deleted user, got used_by=%d", invite.UsedBy.Int64)
+	}
+}
+
+func TestAPITokenLifecycle(t *testing.T) {
+	db := testDB(t)
+	user, err := db.CreateUser("apiuser", "api@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CreateAPIToken(user.ID, "hash", "prefix", "cli"); err != nil {
+		t.Fatal(err)
+	}
+	tokens, err := db.APITokensByUser(user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tokens) != 1 || tokens[0].Name != "cli" || tokens[0].Prefix != "prefix" {
+		t.Fatalf("unexpected tokens %#v", tokens)
+	}
+	found, err := db.UserByAPITokenHash("hash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found.ID != user.ID {
+		t.Fatalf("expected user %d, got %d", user.ID, found.ID)
+	}
+	if err := db.DeleteAPIToken(user.ID, tokens[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	tokens, err = db.APITokensByUser(user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tokens) != 0 {
+		t.Fatalf("expected token deleted, got %#v", tokens)
 	}
 }

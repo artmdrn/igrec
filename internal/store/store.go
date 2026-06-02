@@ -71,6 +71,15 @@ type ActivityPubFollower struct {
 	Inbox string
 }
 
+type APIToken struct {
+	ID         int64
+	UserID     int64
+	Name       string
+	Prefix     string
+	CreatedAt  time.Time
+	LastUsedAt sql.NullTime
+}
+
 func Open(databaseURL string) (*DB, error) {
 	driver, dsn, err := parseDatabaseURL(databaseURL)
 	if err != nil {
@@ -205,6 +214,16 @@ create table if not exists email_unsubscribe_tokens (
   user_id integer not null unique references users(id),
   created_at datetime not null default current_timestamp
 );
+create table if not exists api_tokens (
+  id integer primary key autoincrement,
+  user_id integer not null references users(id),
+  token_hash text not null unique,
+  token_prefix text not null,
+  name text not null default 'api token',
+  created_at datetime not null default current_timestamp,
+  last_used_at datetime
+);
+create index if not exists api_tokens_user_idx on api_tokens(user_id);
 `
 	if _, err := db.Exec(schema); err != nil {
 		return err
@@ -599,6 +618,52 @@ func (db *DB) SetEmailOptIn(userID int64, emailOptIn bool) error {
 	return err
 }
 
+func (db *DB) CreateAPIToken(userID int64, tokenHash, prefix, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		name = "api token"
+	}
+	_, err := db.Exec(`insert into api_tokens(user_id, token_hash, token_prefix, name) values(?, ?, ?, ?)`, userID, tokenHash, prefix, name)
+	return err
+}
+
+func (db *DB) DeleteAPIToken(userID, tokenID int64) error {
+	_, err := db.Exec(`delete from api_tokens where user_id = ? and id = ?`, userID, tokenID)
+	return err
+}
+
+func (db *DB) APITokensByUser(userID int64) ([]APIToken, error) {
+	rows, err := db.Query(`select id, user_id, name, token_prefix, created_at, last_used_at from api_tokens where user_id = ? order by created_at desc`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var tokens []APIToken
+	for rows.Next() {
+		var token APIToken
+		if err := rows.Scan(&token.ID, &token.UserID, &token.Name, &token.Prefix, &token.CreatedAt, &token.LastUsedAt); err != nil {
+			return nil, err
+		}
+		tokens = append(tokens, token)
+	}
+	return tokens, rows.Err()
+}
+
+func (db *DB) UserByAPITokenHash(tokenHash string) (User, error) {
+	var user User
+	err := db.QueryRow(`
+select users.id, users.username, users.domain, users.email, users.fediverse_acct, users.email_opt_in, users.timestamp_preference, users.migration_target, users.created_at
+from api_tokens join users on users.id = api_tokens.user_id
+where api_tokens.token_hash = ?`, tokenHash).
+		Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt)
+	if err != nil {
+		return User{}, err
+	}
+	_, _ = db.Exec(`update api_tokens set last_used_at = current_timestamp where token_hash = ?`, tokenHash)
+	user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
+	return user, nil
+}
+
 func (db *DB) DeleteUser(userID int64) error {
 	tx, err := db.Begin()
 	if err != nil {
@@ -615,6 +680,7 @@ func (db *DB) DeleteUser(userID int64) error {
 		`delete from posts where user_id = ?`,
 		`delete from follows where user_id = ?`,
 		`delete from activitypub_keys where user_id = ?`,
+		`delete from api_tokens where user_id = ?`,
 		`delete from user_follows where follower_user_id = ? or followed_user_id = ?`,
 		`delete from daily_email_sends where user_id = ?`,
 		`delete from email_unsubscribe_tokens where user_id = ?`,

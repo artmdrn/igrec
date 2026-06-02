@@ -24,6 +24,19 @@
     {{if gt .InviteRemaining 0}}
       <button type="submit" name="action" value="invite">make invite</button>
     {{end}}
+    <section class="settings-section">
+      <h2>api</h2>
+      {{if .NewAPIToken}}
+        <p class="system-message">copy now</p>
+        <p class="invite-line">{{.NewAPIToken}}</p>
+      {{end}}
+      <label>token name <input name="api_token_name" placeholder="cli"></label>
+      <button type="submit" name="action" value="api-token">make api token</button>
+      {{range .APITokens}}
+        <p class="invite-line">{{.Name}} · {{.Prefix}}… · {{if .LastUsedAt.Valid}}used{{else}}unused{{end}}</p>
+        <button type="submit" name="delete_api_token_id" value="{{.ID}}">revoke</button>
+      {{end}}
+    </section>
     {{if .Friends}}
       <section class="settings-section">
         <h2>friends</h2>

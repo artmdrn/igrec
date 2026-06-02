@@ -252,6 +252,10 @@ func (a *App) route(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) api(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost && r.URL.Path == "/api/words" {
+		a.apiCreateWord(w, r)
+		return
+	}
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -285,6 +289,63 @@ func (a *App) api(w http.ResponseWriter, r *http.Request) {
 		},
 		"words": apiPostViews(a.cfg.BaseURL, posts),
 	})
+}
+
+func (a *App) apiCreateWord(w http.ResponseWriter, r *http.Request) {
+	user, ok := a.apiUser(r)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if !a.allowRate("api-write:user:"+strconv.FormatInt(user.ID, 10), 120, time.Hour) || !a.allowRate("api-write:ip:"+clientKey(r), 240, time.Hour) {
+		http.Error(w, "rate limited", http.StatusTooManyRequests)
+		return
+	}
+	var raw string
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+		var payload struct {
+			Word string `json:"word"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 64*1024)).Decode(&payload); err != nil {
+			http.Error(w, "invalid json", http.StatusBadRequest)
+			return
+		}
+		raw = payload.Word
+	} else {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, "invalid form", http.StatusBadRequest)
+			return
+		}
+		raw = r.FormValue("word")
+	}
+	value, err := word.Normalize(raw)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	post, err := a.db.CreatePost(user.ID, value, nil)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	go a.deliverPost(post)
+	writeJSON(w, "application/json; charset=utf-8", map[string]any{
+		"ok":   true,
+		"word": apiPostViews(a.cfg.BaseURL, []store.Post{post})[0],
+	})
+}
+
+func (a *App) apiUser(r *http.Request) (store.User, bool) {
+	raw := strings.TrimSpace(r.Header.Get("Authorization"))
+	if !strings.HasPrefix(strings.ToLower(raw), "bearer ") {
+		return store.User{}, false
+	}
+	token := strings.TrimSpace(raw[len("Bearer "):])
+	if token == "" {
+		return store.User{}, false
+	}
+	user, err := a.db.UserByAPITokenHash(hashToken(token))
+	return user, err == nil
 }
 
 func (a *App) postPreviewCard(w http.ResponseWriter, r *http.Request) {
@@ -873,6 +934,32 @@ func (a *App) settings(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			a.render(w, r, "settings.html", a.withCSRF(w, r, a.settingsData(user, map[string]any{"Notice": "invite made"})))
+			return
+		}
+		if r.FormValue("action") == "api-token" {
+			token, tokenHash, err := newToken()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			name := strings.TrimSpace(r.FormValue("api_token_name"))
+			prefix := token
+			if len(prefix) > 10 {
+				prefix = prefix[:10]
+			}
+			if err := a.db.CreateAPIToken(user.ID, tokenHash, prefix, name); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			a.render(w, r, "settings.html", a.withCSRF(w, r, a.settingsData(user, map[string]any{"Notice": "api token created", "NewAPIToken": token})))
+			return
+		}
+		if r.FormValue("delete_api_token_id") != "" {
+			tokenID, _ := strconv.ParseInt(r.FormValue("delete_api_token_id"), 10, 64)
+			if tokenID > 0 {
+				_ = a.db.DeleteAPIToken(user.ID, tokenID)
+			}
+			http.Redirect(w, r, "/settings", http.StatusSeeOther)
 			return
 		}
 		emailNotice := ""
@@ -1778,6 +1865,9 @@ func (a *App) settingsData(user store.User, extra map[string]any) map[string]any
 	data["InviteRemaining"] = remaining
 	if friends, err := a.db.UserFriends(user.ID); err == nil {
 		data["Friends"] = friends
+	}
+	if tokens, err := a.db.APITokensByUser(user.ID); err == nil {
+		data["APITokens"] = tokens
 	}
 	if _, ok := a.operatorEmails[strings.ToLower(user.Email)]; ok {
 		data["IsOperator"] = true
