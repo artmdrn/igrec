@@ -362,32 +362,41 @@ h1 {
 }
 
 .upload-input {
+  display: block;
   font-weight: 700;
+}
+
+.upload-input input {
+  margin-top: .35rem;
 }
 
 .compose-preview {
   position: relative;
-  aspect-ratio: 1 / 1;
-  border: 3px solid var(--ink);
+  min-height: 3.2rem;
+  border: 2px dashed rgba(17,17,17,.55);
   background:
-    radial-gradient(circle at 20% 20%, #fff, #e7d9b6 35%, #e2d0ab 100%);
+    repeating-linear-gradient(0deg, rgba(0,0,0,.045), rgba(0,0,0,.045) 1px, transparent 1px, transparent 7px),
+    rgba(255,255,255,.35);
   overflow: hidden;
 }
 
 .compose-preview.ready {
+  aspect-ratio: 1 / 1;
+  border: 3px solid var(--ink);
   background: #111;
+  box-shadow: 8px 8px 0 var(--ink);
 }
 
 .compose-preview img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  filter: contrast(1.05) saturate(1.08);
+  filter: contrast(1.08) saturate(1.04);
 }
 
 .compose-empty {
   position: absolute;
-  inset: auto .7rem .7rem .7rem;
+  inset: .75rem;
   font-size: .82rem;
   text-transform: uppercase;
 }
