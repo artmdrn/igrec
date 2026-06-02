@@ -142,3 +142,52 @@ func TestAPITokenLifecycle(t *testing.T) {
 		t.Fatalf("expected token deleted, got %#v", tokens)
 	}
 }
+
+func TestActivityPubDeliveryLifecycle(t *testing.T) {
+	db := testDB(t)
+	user, err := db.CreateUser("fed", "fed@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	if err := db.EnqueueActivityPubDelivery(user.ID, "https://remote.example/inbox", []byte(`{"type":"Create"}`), now.Add(-time.Minute), "boom"); err != nil {
+		t.Fatal(err)
+	}
+	deliveries, err := db.DueActivityPubDeliveries(now, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deliveries) != 1 {
+		t.Fatalf("expected one due delivery, got %#v", deliveries)
+	}
+	if string(deliveries[0].Activity) != `{"type":"Create"}` || deliveries[0].LastError != "boom" {
+		t.Fatalf("unexpected delivery %#v", deliveries[0])
+	}
+	if err := db.MarkActivityPubDeliveryFailed(deliveries[0].ID, 1, now.Add(time.Hour), "still down"); err != nil {
+		t.Fatal(err)
+	}
+	deliveries, err = db.DueActivityPubDeliveries(now, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deliveries) != 0 {
+		t.Fatalf("expected no due deliveries after backoff, got %#v", deliveries)
+	}
+	deliveries, err = db.DueActivityPubDeliveries(now.Add(2*time.Hour), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deliveries) != 1 || deliveries[0].Attempts != 1 || deliveries[0].LastError != "still down" {
+		t.Fatalf("unexpected failed delivery state %#v", deliveries)
+	}
+	if err := db.MarkActivityPubDeliveryDelivered(deliveries[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	deliveries, err = db.DueActivityPubDeliveries(now.Add(2*time.Hour), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deliveries) != 0 {
+		t.Fatalf("expected delivered row excluded, got %#v", deliveries)
+	}
+}

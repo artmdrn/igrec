@@ -80,6 +80,18 @@ type APIToken struct {
 	LastUsedAt sql.NullTime
 }
 
+type ActivityPubDelivery struct {
+	ID          int64
+	UserID      int64
+	Inbox       string
+	Activity    []byte
+	Attempts    int
+	NextAt      time.Time
+	LastError   string
+	CreatedAt   time.Time
+	DeliveredAt sql.NullTime
+}
+
 func Open(databaseURL string) (*DB, error) {
 	driver, dsn, err := parseDatabaseURL(databaseURL)
 	if err != nil {
@@ -224,6 +236,19 @@ create table if not exists api_tokens (
   last_used_at datetime
 );
 create index if not exists api_tokens_user_idx on api_tokens(user_id);
+create table if not exists activitypub_deliveries (
+  id integer primary key autoincrement,
+  user_id integer not null references users(id),
+  inbox_url text not null,
+  activity_json text not null,
+  attempts integer not null default 0,
+  next_at datetime not null default current_timestamp,
+  last_error text not null default '',
+  created_at datetime not null default current_timestamp,
+  delivered_at datetime
+);
+create index if not exists activitypub_deliveries_due_idx on activitypub_deliveries(delivered_at, next_at, id);
+create index if not exists activitypub_deliveries_user_idx on activitypub_deliveries(user_id);
 `
 	if _, err := db.Exec(schema); err != nil {
 		return err
@@ -664,6 +689,60 @@ where api_tokens.token_hash = ?`, tokenHash).
 	return user, nil
 }
 
+func (db *DB) EnqueueActivityPubDelivery(userID int64, inbox string, activity []byte, nextAt time.Time, lastError string) error {
+	_, err := db.Exec(`insert into activitypub_deliveries(user_id, inbox_url, activity_json, next_at, last_error) values(?, ?, ?, ?, ?)`,
+		userID, inbox, string(activity), nextAt.UTC(), lastError)
+	return err
+}
+
+func (db *DB) DueActivityPubDeliveries(now time.Time, limit int) ([]ActivityPubDelivery, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := db.Query(`
+select id, user_id, inbox_url, activity_json, attempts, next_at, last_error, created_at, delivered_at
+from activitypub_deliveries
+where delivered_at is null and next_at <= ?
+order by next_at asc, id asc
+limit ?`, now.UTC(), limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var deliveries []ActivityPubDelivery
+	for rows.Next() {
+		var delivery ActivityPubDelivery
+		var activity string
+		if err := rows.Scan(&delivery.ID, &delivery.UserID, &delivery.Inbox, &activity, &delivery.Attempts, &delivery.NextAt, &delivery.LastError, &delivery.CreatedAt, &delivery.DeliveredAt); err != nil {
+			return nil, err
+		}
+		delivery.Activity = []byte(activity)
+		deliveries = append(deliveries, delivery)
+	}
+	return deliveries, rows.Err()
+}
+
+func (db *DB) MarkActivityPubDeliveryDelivered(id int64) error {
+	_, err := db.Exec(`update activitypub_deliveries set delivered_at = current_timestamp where id = ?`, id)
+	return err
+}
+
+func (db *DB) MarkActivityPubDeliveryFailed(id int64, attempts int, nextAt time.Time, lastError string) error {
+	if len(lastError) > 1000 {
+		lastError = lastError[:1000]
+	}
+	_, err := db.Exec(`update activitypub_deliveries set attempts = ?, next_at = ?, last_error = ? where id = ?`, attempts, nextAt.UTC(), lastError, id)
+	return err
+}
+
+func (db *DB) PruneDeliveredActivityPubDeliveries(before time.Time) (int64, error) {
+	res, err := db.Exec(`delete from activitypub_deliveries where delivered_at is not null and delivered_at < ?`, before.UTC())
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 func (db *DB) DeleteUser(userID int64) error {
 	tx, err := db.Begin()
 	if err != nil {
@@ -680,6 +759,7 @@ func (db *DB) DeleteUser(userID int64) error {
 		`delete from posts where user_id = ?`,
 		`delete from follows where user_id = ?`,
 		`delete from activitypub_keys where user_id = ?`,
+		`delete from activitypub_deliveries where user_id = ?`,
 		`delete from api_tokens where user_id = ?`,
 		`delete from user_follows where follower_user_id = ? or followed_user_id = ?`,
 		`delete from daily_email_sends where user_id = ?`,

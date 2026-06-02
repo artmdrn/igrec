@@ -75,6 +75,19 @@ func main() {
 			}
 			log.Printf("sqlite backup written to %s", path)
 			return
+		case "retry-activitypub":
+			limit := 100
+			if raw := os.Getenv("ACTIVITYPUB_RETRY_LIMIT"); raw != "" {
+				if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+					limit = parsed
+				}
+			}
+			delivered, failed, err := app.NewAppForJobs(cfg, db).RetryActivityPubDeliveries(limit)
+			if err != nil {
+				log.Fatal(err)
+			}
+			log.Printf("activitypub retry delivered=%d failed=%d", delivered, failed)
+			return
 		default:
 			log.Fatalf("unknown command %q", os.Args[1])
 		}

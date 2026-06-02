@@ -156,19 +156,7 @@ type rateBucket struct {
 }
 
 func New(cfg Config, db *store.DB) http.Handler {
-	app := &App{
-		cfg:            cfg,
-		db:             db,
-		templates:      template.Must(template.ParseGlob("web/templates/*.html")),
-		operatorEmails: make(map[string]struct{}),
-		limiter:        &rateLimiter{buckets: make(map[string]rateBucket)},
-	}
-	for _, email := range cfg.OperatorEmails {
-		normalized := strings.ToLower(strings.TrimSpace(email))
-		if normalized != "" {
-			app.operatorEmails[normalized] = struct{}{}
-		}
-	}
+	app := NewAppForJobs(cfg, db)
 
 	mux := http.NewServeMux()
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static"))))
@@ -199,6 +187,23 @@ func New(cfg Config, db *store.DB) http.Handler {
 	mux.HandleFunc("/ap/users/", app.actor)
 	mux.HandleFunc("/manifest.webmanifest", app.manifest)
 	return app.withRequestLogging(mux)
+}
+
+func NewAppForJobs(cfg Config, db *store.DB) *App {
+	app := &App{
+		cfg:            cfg,
+		db:             db,
+		templates:      template.Must(template.ParseGlob("web/templates/*.html")),
+		operatorEmails: make(map[string]struct{}),
+		limiter:        &rateLimiter{buckets: make(map[string]rateBucket)},
+	}
+	for _, email := range cfg.OperatorEmails {
+		normalized := strings.ToLower(strings.TrimSpace(email))
+		if normalized != "" {
+			app.operatorEmails[normalized] = struct{}{}
+		}
+	}
+	return app
 }
 
 type statusRecorder struct {
@@ -1499,6 +1504,7 @@ func (a *App) acceptActivityPubFollow(w http.ResponseWriter, r *http.Request, us
 	}
 	if err := a.deliverActivity(user, inbox, accept); err != nil {
 		log.Printf("activitypub accept delivery failed user=%s inbox=%s err=%v", user.Username, inbox, err)
+		a.enqueueActivityPubDelivery(user, inbox, accept, err)
 	}
 	go a.deliverRecentPostsToInbox(user, inbox, 5)
 	w.WriteHeader(http.StatusAccepted)
@@ -1533,6 +1539,7 @@ func (a *App) deliverPost(post store.Post) {
 	for _, follower := range followers {
 		if err := a.deliverActivity(user, follower.Inbox, create); err != nil {
 			log.Printf("activitypub create delivery failed post=%d actor=%s inbox=%s err=%v", post.ID, follower.Actor, follower.Inbox, err)
+			a.enqueueActivityPubDelivery(user, follower.Inbox, create, err)
 		}
 	}
 }
@@ -1549,21 +1556,93 @@ func (a *App) deliverRecentPostsToInbox(user store.User, inbox string, limit int
 	// Deliver oldest first so a new follower sees the arrival packet in natural order.
 	for i := len(posts) - 1; i >= 0; i-- {
 		post := posts[i]
-		if err := a.deliverActivity(user, inbox, activitypub.Create(a.cfg.BaseURL, post)); err != nil {
+		create := activitypub.Create(a.cfg.BaseURL, post)
+		if err := a.deliverActivity(user, inbox, create); err != nil {
 			log.Printf("activitypub backfill delivery failed user=%s post=%d inbox=%s err=%v", user.Username, post.ID, inbox, err)
+			a.enqueueActivityPubDelivery(user, inbox, create, err)
 		}
 	}
+}
+
+func (a *App) enqueueActivityPubDelivery(user store.User, inbox string, activity any, cause error) {
+	raw, err := json.Marshal(activity)
+	if err != nil {
+		log.Printf("activitypub queue marshal failed user=%s inbox=%s err=%v", user.Username, inbox, err)
+		return
+	}
+	message := ""
+	if cause != nil {
+		message = cause.Error()
+	}
+	if err := a.db.EnqueueActivityPubDelivery(user.ID, inbox, raw, time.Now().Add(10*time.Minute), message); err != nil {
+		log.Printf("activitypub queue insert failed user=%s inbox=%s err=%v", user.Username, inbox, err)
+	}
+}
+
+func (a *App) RetryActivityPubDeliveries(limit int) (int, int, error) {
+	deliveries, err := a.db.DueActivityPubDeliveries(time.Now(), limit)
+	if err != nil {
+		return 0, 0, err
+	}
+	delivered := 0
+	failed := 0
+	for _, delivery := range deliveries {
+		user, err := a.db.UserByID(delivery.UserID)
+		if err != nil {
+			failed++
+			_ = a.db.MarkActivityPubDeliveryFailed(delivery.ID, delivery.Attempts+1, nextActivityPubRetry(delivery.Attempts+1), err.Error())
+			continue
+		}
+		if err := a.deliverActivityBytes(user, delivery.Inbox, delivery.Activity); err != nil {
+			failed++
+			_ = a.db.MarkActivityPubDeliveryFailed(delivery.ID, delivery.Attempts+1, nextActivityPubRetry(delivery.Attempts+1), err.Error())
+			continue
+		}
+		if err := a.db.MarkActivityPubDeliveryDelivered(delivery.ID); err != nil {
+			return delivered, failed, err
+		}
+		delivered++
+	}
+	if _, err := a.db.PruneDeliveredActivityPubDeliveries(time.Now().Add(-7 * 24 * time.Hour)); err != nil {
+		return delivered, failed, err
+	}
+	return delivered, failed, nil
+}
+
+func nextActivityPubRetry(attempts int) time.Time {
+	delays := []time.Duration{
+		10 * time.Minute,
+		30 * time.Minute,
+		2 * time.Hour,
+		8 * time.Hour,
+		24 * time.Hour,
+	}
+	if attempts <= 0 {
+		attempts = 1
+	}
+	idx := attempts - 1
+	if idx >= len(delays) {
+		idx = len(delays) - 1
+	}
+	return time.Now().Add(delays[idx])
 }
 
 func (a *App) deliverActivity(user store.User, inbox string, activity any) error {
 	if !safeRemoteURL(inbox) {
 		return fmt.Errorf("unsafe inbox url")
 	}
-	key, err := a.activityPubPrivateKey(user)
+	raw, err := json.Marshal(activity)
 	if err != nil {
 		return err
 	}
-	raw, err := json.Marshal(activity)
+	return a.deliverActivityBytes(user, inbox, raw)
+}
+
+func (a *App) deliverActivityBytes(user store.User, inbox string, raw []byte) error {
+	if !safeRemoteURL(inbox) {
+		return fmt.Errorf("unsafe inbox url")
+	}
+	key, err := a.activityPubPrivateKey(user)
 	if err != nil {
 		return err
 	}

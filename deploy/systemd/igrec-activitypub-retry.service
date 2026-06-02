@@ -1,0 +1,17 @@
+[Unit]
+Description=igrec ActivityPub delivery retry
+After=network-online.target igrec.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=igrec
+Group=igrec
+WorkingDirectory=/opt/igrec/src
+EnvironmentFile=/opt/igrec/.env
+Environment=UPLOAD_DIR=/opt/igrec/data/uploads
+ExecStart=/opt/igrec/bin/igrec retry-activitypub
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/igrec/data

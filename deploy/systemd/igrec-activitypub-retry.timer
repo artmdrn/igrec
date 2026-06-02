@@ -1,0 +1,11 @@
+[Unit]
+Description=Run igrec ActivityPub delivery retry
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=10min
+Persistent=true
+Unit=igrec-activitypub-retry.service
+
+[Install]
+WantedBy=timers.target
