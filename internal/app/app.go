@@ -259,6 +259,10 @@ func (a *App) route(w http.ResponseWriter, r *http.Request) {
 		a.firehose(w, r)
 		return
 	}
+	if r.URL.Path == "/today" {
+		a.today(w, r)
+		return
+	}
 	if strings.HasPrefix(r.URL.Path, "/@") {
 		a.profile(w, r)
 		return
@@ -418,16 +422,17 @@ func previewCardPathParts(path string) (string, string, bool) {
 func renderPreviewCard(post store.Post) (image.Image, error) {
 	const width = 1200
 	const height = 630
+	colors := previewCardColors(post.Word)
 	ttf, err := truetype.Parse(gomono.TTF)
 	if err != nil {
 		return nil, err
 	}
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
-	fillRect(img, img.Bounds(), color.RGBA{246, 241, 222, 255})
+	fillRect(img, img.Bounds(), colors.paper)
 	for y := 0; y < height; y += 8 {
-		fillRect(img, image.Rect(0, y, width, y+1), color.RGBA{230, 220, 190, 120})
+		fillRect(img, image.Rect(0, y, width, y+1), colors.line)
 	}
-	fillRect(img, image.Rect(38, 38, width-38, height-38), color.RGBA{255, 252, 242, 255})
+	fillRect(img, image.Rect(38, 38, width-38, height-38), colors.panel)
 	fillRect(img, image.Rect(38, 38, width-38, 44), color.RGBA{5, 7, 12, 255})
 	fillRect(img, image.Rect(38, height-44, width-38, height-38), color.RGBA{5, 7, 12, 255})
 	fillRect(img, image.Rect(38, 38, 44, height-38), color.RGBA{5, 7, 12, 255})
@@ -445,8 +450,8 @@ func renderPreviewCard(post store.Post) (image.Image, error) {
 	wordSize := fittedFontSize(ttf, post.Word, 980, 156, 42)
 	wordY := 355
 	wordX := centeredTextX(ttf, post.Word, wordSize, width)
-	drawText(img, ttf, post.Word, wordSize, wordX-11, wordY, color.RGBA{0, 35, 149, 255})
-	drawText(img, ttf, post.Word, wordSize, wordX+11, wordY, color.RGBA{237, 41, 57, 255})
+	drawText(img, ttf, post.Word, wordSize, wordX-11, wordY, colors.left)
+	drawText(img, ttf, post.Word, wordSize, wordX+11, wordY, colors.right)
 	drawText(img, ttf, post.Word, wordSize, wordX, wordY, color.RGBA{5, 7, 12, 255})
 
 	byline := "@" + post.Username
@@ -455,6 +460,25 @@ func renderPreviewCard(post store.Post) (image.Image, error) {
 	drawText(img, ttf, "igrec.net", 24, width-220, 548, color.RGBA{5, 7, 12, 255})
 	fillRect(img, image.Rect(80, 492, width-80, 497), color.RGBA{5, 7, 12, 255})
 	return img, nil
+}
+
+type previewColors struct {
+	paper color.RGBA
+	panel color.RGBA
+	line  color.RGBA
+	left  color.RGBA
+	right color.RGBA
+}
+
+func previewCardColors(value string) previewColors {
+	palettes := []previewColors{
+		{paper: color.RGBA{246, 238, 220, 255}, panel: color.RGBA{255, 252, 242, 255}, line: color.RGBA{230, 220, 190, 120}, left: color.RGBA{0, 35, 149, 255}, right: color.RGBA{237, 41, 57, 255}},
+		{paper: color.RGBA{235, 241, 255, 255}, panel: color.RGBA{255, 255, 255, 255}, line: color.RGBA{198, 212, 245, 140}, left: color.RGBA{0, 35, 149, 255}, right: color.RGBA{237, 41, 57, 255}},
+		{paper: color.RGBA{255, 236, 239, 255}, panel: color.RGBA{255, 253, 247, 255}, line: color.RGBA{238, 188, 194, 130}, left: color.RGBA{0, 35, 149, 255}, right: color.RGBA{190, 25, 38, 255}},
+		{paper: color.RGBA{242, 244, 236, 255}, panel: color.RGBA{255, 255, 250, 255}, line: color.RGBA{207, 215, 196, 140}, left: color.RGBA{0, 35, 149, 255}, right: color.RGBA{237, 41, 57, 255}},
+	}
+	sum := sha256.Sum256([]byte(strings.ToLower(value)))
+	return palettes[int(sum[0])%len(palettes)]
 }
 
 func fillRect(img draw.Image, r image.Rectangle, c color.Color) {
@@ -502,6 +526,19 @@ func (a *App) firehose(w http.ResponseWriter, r *http.Request) {
 	a.render(w, r, "index.html", feedData(a.styledPostViews(posts, "datetime"), pageSize, "public", "/"))
 }
 
+func (a *App) today(w http.ResponseWriter, r *http.Request) {
+	before := parseIntQuery(r, "before")
+	const pageSize = 30
+	posts, err := a.db.PostsSinceBefore(startOfToday(), before, pageSize+1)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	data := feedData(a.styledPostViews(posts, "datetime"), pageSize, "today", "/today")
+	data["PageTitle"] = "today"
+	a.render(w, r, "index.html", data)
+}
+
 func (a *App) profile(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/@"), "/")
 	username, err := url.PathUnescape(parts[0])
@@ -512,6 +549,10 @@ func (a *App) profile(w http.ResponseWriter, r *http.Request) {
 	user, err := a.db.UserByUsername(username)
 	if err != nil {
 		http.NotFound(w, r)
+		return
+	}
+	if len(parts) > 1 && parts[1] == "badge.svg" {
+		a.badge(w, r, user)
 		return
 	}
 	posts, err := a.db.PostsByUser(user.Username, 100)
@@ -540,6 +581,9 @@ func (a *App) profile(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		data := map[string]any{"Post": a.styledPostViews([]store.Post{post}, user.TimestampPreference)[0], "User": user}
+		if echoes, err := a.db.PostsByWord(post.Word, post.ID, 6); err == nil && len(echoes) > 0 {
+			data["Echoes"] = a.styledPostViews(echoes, "datetime")
+		}
 		data["PageTitle"] = post.Word + " by @" + post.Username
 		data["OGURL"] = postURL(a.cfg.BaseURL, post)
 		data["OGDescription"] = "@" + post.Username + " said: " + post.Word
@@ -559,7 +603,10 @@ func (a *App) profile(w http.ResponseWriter, r *http.Request) {
 		a.render(w, r, "post.html", data)
 		return
 	}
-	data := map[string]any{"User": user, "Posts": a.styledPostViews(posts, user.TimestampPreference), "Months": months, "Title": title}
+	data := map[string]any{"User": user, "Posts": a.styledPostViews(posts, user.TimestampPreference), "Months": months, "Title": title, "BadgeURL": badgeURL(a.cfg.BaseURL, user)}
+	if inviter, err := a.db.InviterByUserID(user.ID); err == nil {
+		data["Inviter"] = inviter
+	}
 	if viewer, ok := a.currentUser(r); ok && viewer.ID != user.ID {
 		follows, err := a.db.UserFollows(viewer.ID, user.ID)
 		if err == nil {
@@ -568,6 +615,25 @@ func (a *App) profile(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	a.render(w, r, "profile.html", a.withCSRF(w, r, data))
+}
+
+func (a *App) badge(w http.ResponseWriter, r *http.Request, user store.User) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	post, err := a.db.LatestPostByUser(user.Username)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	svg := renderBadgeSVG(user, post)
+	w.Header().Set("Content-Type", "image/svg+xml; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=300")
+	if r.Method == http.MethodHead {
+		return
+	}
+	_, _ = w.Write([]byte(svg))
 }
 
 func (a *App) write(w http.ResponseWriter, r *http.Request) {
@@ -2105,6 +2171,10 @@ func previewCardURL(baseURL string, post store.Post) string {
 	return strings.TrimRight(baseURL, "/") + "/og/@" + url.PathEscape(post.Username) + "/" + url.PathEscape(post.Word) + ".png"
 }
 
+func badgeURL(baseURL string, user store.User) string {
+	return strings.TrimRight(baseURL, "/") + "/@" + url.PathEscape(user.Username) + "/badge.svg"
+}
+
 func absoluteURL(baseURL, value string) string {
 	if strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://") {
 		return value
@@ -2683,6 +2753,11 @@ func dayKey(t time.Time) string {
 	return t.Format("2006-01-02")
 }
 
+func startOfToday() time.Time {
+	now := time.Now()
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+}
+
 func displayTime(t time.Time, preference string, postsOnDay int) string {
 	switch preference {
 	case "date":
@@ -2695,4 +2770,30 @@ func displayTime(t time.Time, preference string, postsOnDay int) string {
 		}
 		return t.Format("Jan 02")
 	}
+}
+
+func renderBadgeSVG(user store.User, post store.Post) string {
+	wordText := template.HTMLEscapeString(post.Word)
+	userText := template.HTMLEscapeString("@" + user.Username)
+	width := 220 + len([]rune(post.Word))*12
+	if width < 360 {
+		width = 360
+	}
+	if width > 720 {
+		width = 720
+	}
+	return fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="120" viewBox="0 0 %d 120" role="img" aria-label="%s said %s">
+<rect width="100%%" height="100%%" fill="#f6eedc"/>
+<path d="M0 12H%dM0 24H%dM0 36H%dM0 48H%dM0 60H%dM0 72H%dM0 84H%dM0 96H%dM0 108H%d" stroke="#e4d8b8" stroke-width="1"/>
+<rect x="8" y="8" width="%d" height="104" fill="#fffef7" stroke="#111" stroke-width="4"/>
+<rect x="22" y="22" width="34" height="34" fill="#fff" stroke="#0055a4" stroke-width="4"/>
+<text x="32" y="48" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="28" font-weight="900" fill="#111">Y</text>
+<text x="82" y="48" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="28" font-weight="900" fill="#0055a4">IGREC</text>
+<text x="86" y="48" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="28" font-weight="900" fill="#ef4135">IGREC</text>
+<text x="84" y="48" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="28" font-weight="900" fill="#111">IGREC</text>
+<text x="24" y="92" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="34" font-weight="900" fill="#0055a4">%s</text>
+<text x="27" y="92" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="34" font-weight="900" fill="#ef4135">%s</text>
+<text x="25" y="92" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="34" font-weight="900" fill="#111">%s</text>
+<text x="%d" y="94" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#111">%s</text>
+</svg>`, width, width, userText, wordText, width, width, width, width, width, width, width, width, width, width-16, wordText, wordText, wordText, width-24, userText)
 }

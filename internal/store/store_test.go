@@ -166,6 +166,57 @@ func TestCreatePostWithFocusStoresClampedFocus(t *testing.T) {
 	}
 }
 
+func TestInviterByUserIDFindsRedeemedInviteOwner(t *testing.T) {
+	db := testDB(t)
+	inviter, err := db.CreateUser("maker", "maker@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, err := db.CreateUser("made", "made@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CreateInviteForUser("invite-maker", inviter.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.UseInvite("invite-maker", user.ID); err != nil {
+		t.Fatal(err)
+	}
+	found, err := db.InviterByUserID(user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found.ID != inviter.ID {
+		t.Fatalf("expected inviter %d, got %d", inviter.ID, found.ID)
+	}
+}
+
+func TestPostsByWordExcludesCurrentPost(t *testing.T) {
+	db := testDB(t)
+	first, err := db.CreateUser("first", "first@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := db.CreateUser("second", "second@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := db.CreatePost(first.ID, "echo", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.CreatePost(second.ID, "echo", nil); err != nil {
+		t.Fatal(err)
+	}
+	posts, err := db.PostsByWord("echo", current.ID, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(posts) != 1 || posts[0].Username != "second" {
+		t.Fatalf("unexpected echoes %#v", posts)
+	}
+}
+
 func TestActivityPubDeliveryLifecycle(t *testing.T) {
 	db := testDB(t)
 	user, err := db.CreateUser("fed", "fed@example.com")

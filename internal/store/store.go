@@ -334,6 +334,20 @@ func (db *DB) UserByID(id int64) (User, error) {
 	return user, err
 }
 
+func (db *DB) InviterByUserID(userID int64) (User, error) {
+	var user User
+	err := db.QueryRow(`
+select users.id, users.username, users.domain, users.email, users.fediverse_acct, users.email_opt_in, users.timestamp_preference, users.migration_target, users.created_at
+from invites
+join users on users.id = invites.inviter_id
+where invites.used_by = ?
+order by invites.used_at asc
+limit 1`, userID).
+		Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt)
+	user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
+	return user, err
+}
+
 func (db *DB) UserByEmail(email string) (User, error) {
 	var user User
 	err := db.QueryRow(`select id, username, domain, email, fediverse_acct, email_opt_in, timestamp_preference, migration_target, created_at from users where lower(email) = lower(?)`, strings.TrimSpace(email)).
@@ -1074,6 +1088,32 @@ func (db *DB) FirehoseBefore(beforeID int64, limit int) ([]Post, error) {
 		return db.posts(`where posts.id < ?`, limit, beforeID)
 	}
 	return db.Firehose(limit)
+}
+
+func (db *DB) PostsSince(since time.Time, limit int) ([]Post, error) {
+	return db.posts(`where posts.created_at >= ?`, limit, since.UTC())
+}
+
+func (db *DB) PostsSinceBefore(since time.Time, beforeID int64, limit int) ([]Post, error) {
+	if beforeID > 0 {
+		return db.posts(`where posts.created_at >= ? and posts.id < ?`, limit, since.UTC(), beforeID)
+	}
+	return db.PostsSince(since, limit)
+}
+
+func (db *DB) PostsByWord(value string, excludePostID int64, limit int) ([]Post, error) {
+	return db.posts(`where posts.word = ? and posts.id != ?`, limit, value, excludePostID)
+}
+
+func (db *DB) LatestPostByUser(username string) (Post, error) {
+	posts, err := db.PostsByUser(username, 1)
+	if err != nil {
+		return Post{}, err
+	}
+	if len(posts) == 0 {
+		return Post{}, sql.ErrNoRows
+	}
+	return posts[0], nil
 }
 
 func (db *DB) CountUsers() (int, error) {

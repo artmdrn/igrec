@@ -179,16 +179,65 @@ time {
   z-index: 1;
 }
 
+.echoes {
+  display: grid;
+  gap: .55rem;
+  padding: .9rem 0 0;
+}
+
+.echoes > p {
+  margin: 0;
+  color: var(--blue);
+  text-transform: uppercase;
+}
+
+.echoes > div {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  border-left: 2px solid var(--ink);
+  border-top: 2px solid var(--ink);
+}
+
+.echoes a {
+  display: grid;
+  gap: .4rem;
+  min-height: 5.4rem;
+  padding: .55rem;
+  border-right: 2px solid var(--ink);
+  border-bottom: 2px solid var(--ink);
+  background: rgba(255,255,255,.32);
+}
+
+.echoes span {
+  overflow-wrap: anywhere;
+  font-weight: 900;
+}
+
 .profile {
   padding: 1rem 0 2rem;
   border-bottom: 3px solid var(--ink);
 }
 
 .fediverse-address,
-.today-word {
+.today-word,
+.invited-by {
   margin: .35rem 0 0;
   overflow-wrap: anywhere;
   color: var(--blue);
+  text-transform: uppercase;
+}
+
+.invited-by {
+  color: rgba(17,17,17,.68);
+}
+
+.badge-link {
+  display: inline-block;
+  margin-top: .75rem;
+  padding: .25rem .45rem;
+  border: 2px solid var(--ink);
+  background: #fffef7;
+  color: var(--red);
   text-transform: uppercase;
 }
 

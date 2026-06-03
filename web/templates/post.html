@@ -13,5 +13,18 @@
       <time datetime="{{.Post.MachineTime}}">{{.Post.DisplayTime}}</time>
     {{end}}
   </article>
+  {{if .Echoes}}
+    <section class="echoes" aria-label="word echoes">
+      <p>echoes</p>
+      <div>
+        {{range .Echoes}}
+          <a href="/@{{.Username}}/{{.Word}}">
+            <span>@{{.Username}}</span>
+            <time datetime="{{.MachineTime}}">{{.DisplayTime}}</time>
+          </a>
+        {{end}}
+      </div>
+    </section>
+  {{end}}
 </main>
 {{template "foot" .}}

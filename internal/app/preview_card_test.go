@@ -60,3 +60,56 @@ func TestPostPageUsesGeneratedPreviewForImagelessPost(t *testing.T) {
 		t.Fatalf("expected image/png OG type, got %s", body)
 	}
 }
+
+func TestPostPageShowsWordEchoes(t *testing.T) {
+	a := testApp(t)
+	first, err := a.db.CreateUser("first", "first@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := a.db.CreateUser("second", "second@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.CreatePost(first.ID, "ember", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.CreatePost(second.ID, "ember", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/@second/ember", nil)
+	w := httptest.NewRecorder()
+	a.profile(w, req)
+
+	body := w.Body.String()
+	if !strings.Contains(body, "echoes") || !strings.Contains(body, "@first") {
+		t.Fatalf("expected echo from first user, got %s", body)
+	}
+}
+
+func TestBadgeServesLatestWordSVG(t *testing.T) {
+	a := testApp(t)
+	user, err := a.db.CreateUser("badge", "badge@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.CreatePost(user.ID, "signal", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/@badge/badge.svg", nil)
+	w := httptest.NewRecorder()
+	a.profile(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, resp.StatusCode)
+	}
+	if got := resp.Header.Get("Content-Type"); got != "image/svg+xml; charset=utf-8" {
+		t.Fatalf("expected svg content type, got %q", got)
+	}
+	if body := w.Body.String(); !strings.Contains(body, "signal") || !strings.Contains(body, "@badge") {
+		t.Fatalf("expected badge svg to include latest word and user, got %s", body)
+	}
+}

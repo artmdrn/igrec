@@ -3,8 +3,10 @@
   <section class="profile">
     <h1>@{{.User.Username}}</h1>
     <p class="fediverse-address">@{{.User.Username}}@igrec.net</p>
+    {{if .Inviter}}<p class="invited-by">invited by <a href="/@{{.Inviter.Username}}">@{{.Inviter.Username}}</a></p>{{end}}
     {{if .Title}}<p class="system-message">{{.Title}}</p>{{end}}
     {{if .User.Domain}}<a rel="me" href="https://{{.User.Domain}}">{{.User.Domain}}</a>{{end}}
+    {{if .BadgeURL}}<a class="badge-link" href="/@{{.User.Username}}/badge.svg">badge.svg</a>{{end}}
     {{if .CanFriend}}
       <form class="inline-action" method="post" action="/friends">
         <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">

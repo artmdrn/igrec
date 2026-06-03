@@ -1,5 +1,5 @@
 {{template "head" .}}
-<main class="feed" aria-label="public firehose">
+<main class="feed" aria-label="{{if .FeedTitle}}{{.FeedTitle}}{{else}}public{{end}} feed">
   {{range .Posts}}
     <article class="word {{if .HasImage}}word-photo{{end}}">
       <a class="said" href="/@{{.Username}}">@{{.Username}}</a>
