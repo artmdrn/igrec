@@ -4,7 +4,7 @@
     <a class="said" href="/@{{.User.Username}}">@{{.User.Username}}</a>
     {{if .Post.HasImage}}
       <a class="photo" href="/@{{.User.Username}}/{{.Post.Word}}">
-        <img src="{{.Post.ImageURL.String}}" alt="">
+        <img src="{{.Post.ImageURL.String}}" alt="" style="{{.Post.FocusCSS}}">
         <span class="value caption" style="{{.Post.CaptionCSS}}">{{.Post.Word}}</span>
       </a>
       <time datetime="{{.Post.MachineTime}}">{{.Post.DisplayTime}}</time>

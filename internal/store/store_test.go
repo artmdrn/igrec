@@ -143,6 +143,29 @@ func TestAPITokenLifecycle(t *testing.T) {
 	}
 }
 
+func TestCreatePostWithFocusStoresClampedFocus(t *testing.T) {
+	db := testDB(t)
+	user, err := db.CreateUser("photo", "photo@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	imageURL := "/uploads/photo.jpg"
+	post, err := db.CreatePostWithFocus(user.ID, "frame", &imageURL, 1.4, -0.2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if post.FocusX != 1 || post.FocusY != 0 {
+		t.Fatalf("expected clamped focus 1,0 got %.2f,%.2f", post.FocusX, post.FocusY)
+	}
+	found, err := db.PostByID(post.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found.FocusX != 1 || found.FocusY != 0 {
+		t.Fatalf("expected stored focus 1,0 got %.2f,%.2f", found.FocusX, found.FocusY)
+	}
+}
+
 func TestActivityPubDeliveryLifecycle(t *testing.T) {
 	db := testDB(t)
 	user, err := db.CreateUser("fed", "fed@example.com")

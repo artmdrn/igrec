@@ -77,6 +77,16 @@ type postView struct {
 	MachineTime string
 	HasImage    bool
 	CaptionCSS  template.CSS
+	FocusCSS    template.CSS
+}
+
+type operatorPulse struct {
+	UserCount             int
+	PostCount             int
+	PostsToday            int
+	PendingDeliveries     int
+	DueDeliveries         int
+	DailyEmailSubscribers int
 }
 
 type inboundAttachment struct {
@@ -569,7 +579,7 @@ func (a *App) write(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		a.render(w, r, "write.html", a.withCSRF(w, r, nil))
+		a.render(w, r, "write.html", a.withCSRF(w, r, a.writeData(user, nil)))
 	case http.MethodPost:
 		if !a.validCSRF(r) {
 			http.Error(w, "forbidden", http.StatusForbidden)
@@ -582,30 +592,32 @@ func (a *App) write(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes+2<<20)
 		value, err := word.Normalize(r.FormValue("word"))
 		if err != nil {
-			a.render(w, r, "write.html", a.withCSRF(w, r, map[string]any{"Error": err.Error(), "Word": r.FormValue("word")}))
+			a.render(w, r, "write.html", a.withCSRF(w, r, a.writeData(user, map[string]any{"Error": err.Error(), "Word": r.FormValue("word")})))
 			return
 		}
+		focusX := parseUnitFloat(r.FormValue("focus_x"), 0.5)
+		focusY := parseUnitFloat(r.FormValue("focus_y"), 0.5)
 		var imageURL *string
 		imageFile, imageHeader, err := r.FormFile("image_file")
 		if err == nil {
 			defer imageFile.Close()
 			uploaded, uploadErr := a.saveUploadedImage(imageFile, imageHeader)
 			if uploadErr != nil {
-				a.render(w, r, "write.html", a.withCSRF(w, r, map[string]any{
+				a.render(w, r, "write.html", a.withCSRF(w, r, a.writeData(user, map[string]any{
 					"Error": uploadErr.Error(),
 					"Word":  r.FormValue("word"),
-				}))
+				})))
 				return
 			}
 			imageURL = &uploaded
 		} else if !errors.Is(err, http.ErrMissingFile) {
-			a.render(w, r, "write.html", a.withCSRF(w, r, map[string]any{
+			a.render(w, r, "write.html", a.withCSRF(w, r, a.writeData(user, map[string]any{
 				"Error": "image upload failed",
 				"Word":  r.FormValue("word"),
-			}))
+			})))
 			return
 		}
-		post, err := a.db.CreatePost(user.ID, value, imageURL)
+		post, err := a.db.CreatePostWithFocus(user.ID, value, imageURL, focusX, focusY)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -623,6 +635,23 @@ func (a *App) write(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func (a *App) writeData(user store.User, extra map[string]any) map[string]any {
+	data := map[string]any{}
+	if posts, err := a.db.PostsByUser(user.Username, 10); err == nil {
+		today := dayKey(time.Now())
+		for _, post := range posts {
+			if dayKey(post.CreatedAt) == today {
+				data["TodayPost"] = a.styledPostViews([]store.Post{post}, user.TimestampPreference)[0]
+				break
+			}
+		}
+	}
+	for key, value := range extra {
+		data[key] = value
+	}
+	return data
 }
 
 func parseUnitFloat(raw string, fallback float64) float64 {
@@ -1956,12 +1985,26 @@ func (a *App) settingsData(user store.User, extra map[string]any) map[string]any
 	if _, ok := a.operatorEmails[strings.ToLower(user.Email)]; ok {
 		data["IsOperator"] = true
 		data["UploadStorage"] = a.uploadStorageStats()
+		data["OperatorPulse"] = a.operatorPulse()
 	}
 
 	for key, value := range extra {
 		data[key] = value
 	}
 	return data
+}
+
+func (a *App) operatorPulse() operatorPulse {
+	var pulse operatorPulse
+	pulse.UserCount, _ = a.db.CountUsers()
+	pulse.PostCount, _ = a.db.CountPosts()
+	pulse.PostsToday, _ = a.db.CountPostsSince(time.Now().Truncate(24 * time.Hour))
+	pulse.PendingDeliveries, _ = a.db.PendingActivityPubDeliveryCount()
+	pulse.DueDeliveries, _ = a.db.DueActivityPubDeliveryCount(time.Now())
+	if candidates, err := a.db.DailyEmailCandidates(dayKey(time.Now()), 10000); err == nil {
+		pulse.DailyEmailSubscribers = len(candidates)
+	}
+	return pulse
 }
 
 func (a *App) uploadStorageStats() uploadStorageStats {
@@ -2339,8 +2382,28 @@ func (a *App) styledPostViews(posts []store.Post, preference string) []postView 
 			continue
 		}
 		views[i].CaptionCSS = a.captionStyleForPost(views[i].Post)
+		views[i].FocusCSS = imageFocusCSS(views[i].Post)
 	}
 	return views
+}
+
+func imageFocusCSS(post store.Post) template.CSS {
+	x := strconv.FormatFloat(unitPercent(post.FocusX), 'f', 1, 64)
+	y := strconv.FormatFloat(unitPercent(post.FocusY), 'f', 1, 64)
+	return template.CSS("object-position: " + x + "% " + y + "%;")
+}
+
+func unitPercent(value float64) float64 {
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		return 50
+	}
+	if value < 0 {
+		value = 0
+	}
+	if value > 1 {
+		value = 1
+	}
+	return value * 100
 }
 
 func (a *App) captionStyleForPost(post store.Post) template.CSS {

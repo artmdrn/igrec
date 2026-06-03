@@ -35,6 +35,8 @@ type Post struct {
 	Username  string
 	Word      string
 	ImageURL  sql.NullString
+	FocusX    float64
+	FocusY    float64
 	CreatedAt time.Time
 }
 
@@ -185,6 +187,8 @@ create table if not exists posts (
   user_id integer not null references users(id),
   word text not null,
   image_url text,
+  image_focus_x real not null default 0.5,
+  image_focus_y real not null default 0.5,
   created_at datetime not null default current_timestamp
 );
 create index if not exists posts_created_at_idx on posts(created_at desc, id desc);
@@ -256,7 +260,13 @@ create index if not exists activitypub_deliveries_user_idx on activitypub_delive
 	if err := db.ensureColumn("users", "timestamp_preference", "text not null default 'smart'"); err != nil {
 		return err
 	}
-	return db.ensureColumn("invites", "inviter_id", "integer references users(id)")
+	if err := db.ensureColumn("invites", "inviter_id", "integer references users(id)"); err != nil {
+		return err
+	}
+	if err := db.ensureColumn("posts", "image_focus_x", "real not null default 0.5"); err != nil {
+		return err
+	}
+	return db.ensureColumn("posts", "image_focus_y", "real not null default 0.5")
 }
 
 func (db *DB) ensureColumn(table, column, definition string) error {
@@ -832,7 +842,7 @@ where email_unsubscribe_tokens.token = ?`, token).
 func (db *DB) DailyEmailCandidates(sentOn string, limit int) ([]DailyEmailCandidate, error) {
 	rows, err := db.Query(`
 select users.id, users.username, users.domain, users.email, users.fediverse_acct, users.email_opt_in, users.timestamp_preference, users.migration_target, users.created_at,
-       posts.id, posts.user_id, post_users.username, posts.word, posts.image_url, posts.created_at,
+       posts.id, posts.user_id, post_users.username, posts.word, posts.image_url, posts.image_focus_x, posts.image_focus_y, posts.created_at,
        (select count(*) from daily_email_sends all_sends where all_sends.user_id = users.id)
 from users
 left join daily_email_sends on daily_email_sends.user_id = users.id and daily_email_sends.sent_on = ?
@@ -867,6 +877,7 @@ limit ?`, sentOn, limit)
 		var postID, postUserID sql.NullInt64
 		var postUsername, postWord sql.NullString
 		var imageURL sql.NullString
+		var focusX, focusY sql.NullFloat64
 		var postCreatedAt sql.NullTime
 		if err := rows.Scan(
 			&candidate.User.ID,
@@ -883,6 +894,8 @@ limit ?`, sentOn, limit)
 			&postUsername,
 			&postWord,
 			&imageURL,
+			&focusX,
+			&focusY,
 			&postCreatedAt,
 			&candidate.SentCount,
 		); err != nil {
@@ -895,6 +908,14 @@ limit ?`, sentOn, limit)
 			post.Username = postUsername.String
 			post.Word = postWord.String
 			post.ImageURL = imageURL
+			post.FocusX = 0.5
+			post.FocusY = 0.5
+			if focusX.Valid {
+				post.FocusX = focusX.Float64
+			}
+			if focusY.Valid {
+				post.FocusY = focusY.Float64
+			}
 			post.CreatedAt = postCreatedAt.Time
 			candidate.Post = sql.Null[Post]{V: post, Valid: true}
 		}
@@ -997,11 +1018,15 @@ func passkeyID(rawID []byte) string {
 }
 
 func (db *DB) CreatePost(userID int64, value string, imageURL *string) (Post, error) {
+	return db.CreatePostWithFocus(userID, value, imageURL, 0.5, 0.5)
+}
+
+func (db *DB) CreatePostWithFocus(userID int64, value string, imageURL *string, focusX, focusY float64) (Post, error) {
 	var nullable sql.NullString
 	if imageURL != nil && *imageURL != "" {
 		nullable = sql.NullString{String: *imageURL, Valid: true}
 	}
-	res, err := db.Exec(`insert into posts(user_id, word, image_url) values(?, ?, ?)`, userID, value, nullable)
+	res, err := db.Exec(`insert into posts(user_id, word, image_url, image_focus_x, image_focus_y) values(?, ?, ?, ?, ?)`, userID, value, nullable, clampFocus(focusX), clampFocus(focusY))
 	if err != nil {
 		return Post{}, err
 	}
@@ -1021,22 +1046,22 @@ func normalizeTimestampPreference(preference string) string {
 func (db *DB) PostByID(id int64) (Post, error) {
 	var post Post
 	err := db.QueryRow(`
-select posts.id, posts.user_id, users.username, posts.word, posts.image_url, posts.created_at
+select posts.id, posts.user_id, users.username, posts.word, posts.image_url, posts.image_focus_x, posts.image_focus_y, posts.created_at
 from posts join users on users.id = posts.user_id
 where posts.id = ?`, id).
-		Scan(&post.ID, &post.UserID, &post.Username, &post.Word, &post.ImageURL, &post.CreatedAt)
+		Scan(&post.ID, &post.UserID, &post.Username, &post.Word, &post.ImageURL, &post.FocusX, &post.FocusY, &post.CreatedAt)
 	return post, err
 }
 
 func (db *DB) PostByUserWord(username, value string) (Post, error) {
 	var post Post
 	err := db.QueryRow(`
-select posts.id, posts.user_id, users.username, posts.word, posts.image_url, posts.created_at
+select posts.id, posts.user_id, users.username, posts.word, posts.image_url, posts.image_focus_x, posts.image_focus_y, posts.created_at
 from posts join users on users.id = posts.user_id
 where users.username = ? and posts.word = ?
 order by posts.created_at desc, posts.id desc
 limit 1`, username, value).
-		Scan(&post.ID, &post.UserID, &post.Username, &post.Word, &post.ImageURL, &post.CreatedAt)
+		Scan(&post.ID, &post.UserID, &post.Username, &post.Word, &post.ImageURL, &post.FocusX, &post.FocusY, &post.CreatedAt)
 	return post, err
 }
 
@@ -1051,6 +1076,26 @@ func (db *DB) FirehoseBefore(beforeID int64, limit int) ([]Post, error) {
 	return db.Firehose(limit)
 }
 
+func (db *DB) CountUsers() (int, error) {
+	return db.count(`select count(*) from users`)
+}
+
+func (db *DB) CountPosts() (int, error) {
+	return db.count(`select count(*) from posts`)
+}
+
+func (db *DB) CountPostsSince(since time.Time) (int, error) {
+	return db.count(`select count(*) from posts where created_at >= ?`, since.UTC())
+}
+
+func (db *DB) PendingActivityPubDeliveryCount() (int, error) {
+	return db.count(`select count(*) from activitypub_deliveries where delivered_at is null`)
+}
+
+func (db *DB) DueActivityPubDeliveryCount(now time.Time) (int, error) {
+	return db.count(`select count(*) from activitypub_deliveries where delivered_at is null and next_at <= ?`, now.UTC())
+}
+
 func (db *DB) PostsByUser(username string, limit int) ([]Post, error) {
 	return db.posts(`where users.username = ?`, limit, username)
 }
@@ -1059,10 +1104,16 @@ func (db *DB) AllPostsByUser(username string) ([]Post, error) {
 	return db.postsWithoutLimit(`where users.username = ?`, username)
 }
 
+func (db *DB) count(query string, args ...any) (int, error) {
+	var count int
+	err := db.QueryRow(query, args...).Scan(&count)
+	return count, err
+}
+
 func (db *DB) posts(where string, limit int, args ...any) ([]Post, error) {
 	args = append(args, limit)
 	rows, err := db.Query(fmt.Sprintf(`
-select posts.id, posts.user_id, users.username, posts.word, posts.image_url, posts.created_at
+select posts.id, posts.user_id, users.username, posts.word, posts.image_url, posts.image_focus_x, posts.image_focus_y, posts.created_at
 from posts join users on users.id = posts.user_id
 %s
 order by posts.created_at desc, posts.id desc
@@ -1075,7 +1126,7 @@ limit ?`, where), args...)
 	var posts []Post
 	for rows.Next() {
 		var post Post
-		if err := rows.Scan(&post.ID, &post.UserID, &post.Username, &post.Word, &post.ImageURL, &post.CreatedAt); err != nil {
+		if err := rows.Scan(&post.ID, &post.UserID, &post.Username, &post.Word, &post.ImageURL, &post.FocusX, &post.FocusY, &post.CreatedAt); err != nil {
 			return nil, err
 		}
 		posts = append(posts, post)
@@ -1085,7 +1136,7 @@ limit ?`, where), args...)
 
 func (db *DB) postsWithoutLimit(where string, args ...any) ([]Post, error) {
 	rows, err := db.Query(fmt.Sprintf(`
-select posts.id, posts.user_id, users.username, posts.word, posts.image_url, posts.created_at
+select posts.id, posts.user_id, users.username, posts.word, posts.image_url, posts.image_focus_x, posts.image_focus_y, posts.created_at
 from posts join users on users.id = posts.user_id
 %s
 order by posts.created_at desc, posts.id desc`, where), args...)
@@ -1097,10 +1148,20 @@ order by posts.created_at desc, posts.id desc`, where), args...)
 	var posts []Post
 	for rows.Next() {
 		var post Post
-		if err := rows.Scan(&post.ID, &post.UserID, &post.Username, &post.Word, &post.ImageURL, &post.CreatedAt); err != nil {
+		if err := rows.Scan(&post.ID, &post.UserID, &post.Username, &post.Word, &post.ImageURL, &post.FocusX, &post.FocusY, &post.CreatedAt); err != nil {
 			return nil, err
 		}
 		posts = append(posts, post)
 	}
 	return posts, rows.Err()
+}
+
+func clampFocus(value float64) float64 {
+	if value < 0 {
+		return 0
+	}
+	if value > 1 {
+		return 1
+	}
+	return value
 }

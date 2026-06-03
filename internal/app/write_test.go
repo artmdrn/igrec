@@ -2,11 +2,14 @@ package app
 
 import (
 	"bytes"
+	"database/sql"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"igrec.net/igrec/internal/store"
 )
 
 func TestWritePostShowsCommittedWordBeforeRedirect(t *testing.T) {
@@ -60,5 +63,20 @@ func TestWritePostShowsCommittedWordBeforeRedirect(t *testing.T) {
 	}
 	if !strings.Contains(html, `http-equiv="refresh" content="6; url=/@cc00ffee/Integration"`) {
 		t.Fatalf("expected refresh to post permalink, got %s", html)
+	}
+}
+
+func TestImageFocusCSSUsesStoredFocus(t *testing.T) {
+	got := string(imageFocusCSS(storePostWithFocus(0.25, 0.75)))
+	if got != "object-position: 25.0% 75.0%;" {
+		t.Fatalf("unexpected focus CSS %q", got)
+	}
+}
+
+func storePostWithFocus(x, y float64) store.Post {
+	return store.Post{
+		ImageURL: sql.NullString{String: "/uploads/photo.jpg", Valid: true},
+		FocusX:   x,
+		FocusY:   y,
 	}
 }

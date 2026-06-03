@@ -2,7 +2,10 @@
 <main class="write">
   <form method="post" action="/write" enctype="multipart/form-data" class="compose" data-compose>
     {{if .Error}}<p class="error system-message">{{.Error}}</p>{{end}}
+    {{if .TodayPost}}<p class="today-word">today: <a href="/@{{.TodayPost.Username}}/{{.TodayPost.Word}}">{{.TodayPost.Word}}</a></p>{{end}}
     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    <input type="hidden" name="focus_x" value="0.5" data-focus-x>
+    <input type="hidden" name="focus_y" value="0.5" data-focus-y>
     <input name="word" value="{{.Word}}" maxlength="50" autocomplete="off" placeholder="word" autofocus required aria-label="word" data-word-input>
     <section class="compose-photo">
       <label class="upload-input">
@@ -11,11 +14,12 @@
       </label>
       <div class="compose-preview" data-preview-wrap>
         <img alt="" data-preview-image hidden>
+        <span class="focus-target" data-focus-target hidden></span>
         <p class="system-message compose-empty" data-preview-empty>optional image</p>
       </div>
     </section>
     <button type="submit">post</button>
   </form>
 </main>
-<script src="/static/compose.js?v=20260602-photo" defer></script>
+<script src="/static/compose.js?v=20260603-focus" defer></script>
 {{template "foot" .}}

@@ -2,6 +2,7 @@
 <main>
   <section class="profile">
     <h1>@{{.User.Username}}</h1>
+    <p class="fediverse-address">@{{.User.Username}}@igrec.net</p>
     {{if .Title}}<p class="system-message">{{.Title}}</p>{{end}}
     {{if .User.Domain}}<a rel="me" href="https://{{.User.Domain}}">{{.User.Domain}}</a>{{end}}
     {{if .CanFriend}}
@@ -29,7 +30,7 @@
     {{range .Posts}}
       <a class="tile {{if .HasImage}}tile-photo{{end}}" href="/@{{.Username}}/{{.Word}}">
         {{if .HasImage}}
-          <img src="{{.ImageURL.String}}" alt="">
+          <img src="{{.ImageURL.String}}" alt="" style="{{.FocusCSS}}">
           <span style="{{.CaptionCSS}}">{{.Word}}</span>
         {{else}}
           <span>{{.Word}}</span>
@@ -37,7 +38,10 @@
         <time datetime="{{.MachineTime}}">{{.DisplayTime}}</time>
       </a>
     {{else}}
-      <p class="empty">no words here yet</p>
+      <section class="empty empty-prompt">
+        <p>&gt;_</p>
+        <a href="/write">write</a>
+      </section>
     {{end}}
   </section>
 </main>

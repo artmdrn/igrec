@@ -5,7 +5,7 @@
       <a class="said" href="/@{{.Username}}">@{{.Username}}</a>
       {{if .HasImage}}
         <a class="photo" href="/@{{.Username}}/{{.Word}}">
-          <img src="{{.ImageURL.String}}" alt="">
+          <img src="{{.ImageURL.String}}" alt="" style="{{.FocusCSS}}">
           <span class="value caption" style="{{.CaptionCSS}}">{{.Word}}</span>
         </a>
         <time>{{.CreatedAt.Format "2006-01-02 15:04"}}</time>
@@ -15,7 +15,10 @@
       {{end}}
     </article>
   {{else}}
-    <p class="empty">no words here yet</p>
+    <section class="empty empty-prompt">
+      <p>&gt;_</p>
+      <a href="/write">write</a>
+    </section>
   {{end}}
   {{if .MoreHref}}
     <a class="pager" href="{{.MoreHref}}">older</a>

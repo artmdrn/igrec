@@ -29,6 +29,8 @@
       {{if .NewAPIToken}}
         <p class="system-message">copy now</p>
         <p class="invite-line">{{.NewAPIToken}}</p>
+        <pre class="api-example">curl -H "Authorization: Bearer {{.NewAPIToken}}" https://igrec.net/api/@{{.User.Username}}/words
+curl -X POST -H "Authorization: Bearer {{.NewAPIToken}}" -d "word=moment" https://igrec.net/api/words</pre>
       {{end}}
       <label>token name <input name="api_token_name" placeholder="cli"></label>
       <button type="submit" name="action" value="api-token">make api token</button>
@@ -46,6 +48,11 @@
       </section>
     {{end}}
     {{if .IsOperator}}
+      <section class="settings-section pulse">
+        <h2>pulse</h2>
+        <p>{{.OperatorPulse.UserCount}} users · {{.OperatorPulse.PostCount}} words · {{.OperatorPulse.PostsToday}} today</p>
+        <p>{{.OperatorPulse.DailyEmailSubscribers}} daily emails due · {{.OperatorPulse.PendingDeliveries}} fediverse queued · {{.OperatorPulse.DueDeliveries}} due now</p>
+      </section>
       <section class="settings-section">
         <h2>storage</h2>
         <p class="muted">{{.UploadStorage.FileCount}} images · {{.UploadStorage.FormattedBytes}} total · {{.UploadStorage.FormattedAverage}} average</p>

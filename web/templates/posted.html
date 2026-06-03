@@ -2,7 +2,7 @@
 <main class="posted">
   <article class="posted-card {{if .Post.HasImage}}posted-photo{{end}}">
     {{if .Post.HasImage}}
-      <img src="{{.Post.ImageURL.String}}" alt="">
+      <img src="{{.Post.ImageURL.String}}" alt="" style="{{.Post.FocusCSS}}">
     {{end}}
     <p class="posted-word {{if .Post.HasImage}}caption{{end}}" {{if .Post.HasImage}}style="{{.Post.CaptionCSS}}"{{end}}>{{.Post.Word}}</p>
     <a class="posted-link" href="{{.PostURL}}">open</a>

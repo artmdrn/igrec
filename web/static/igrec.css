@@ -184,6 +184,14 @@ time {
   border-bottom: 3px solid var(--ink);
 }
 
+.fediverse-address,
+.today-word {
+  margin: .35rem 0 0;
+  overflow-wrap: anywhere;
+  color: var(--blue);
+  text-transform: uppercase;
+}
+
 .archive-nav {
   display: flex;
   flex-wrap: wrap;
@@ -385,6 +393,7 @@ h1 {
   border: 3px solid var(--ink);
   background: #111;
   box-shadow: 8px 8px 0 var(--ink);
+  cursor: crosshair;
 }
 
 .compose-preview img {
@@ -399,6 +408,39 @@ h1 {
   inset: .75rem;
   font-size: .82rem;
   text-transform: uppercase;
+}
+
+.focus-target {
+  position: absolute;
+  width: 2.2rem;
+  height: 2.2rem;
+  border: 3px solid #fff;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  mix-blend-mode: difference;
+}
+
+.focus-target::before,
+.focus-target::after {
+  content: "";
+  position: absolute;
+  background: #fff;
+}
+
+.focus-target::before {
+  left: 50%;
+  top: -.7rem;
+  width: 3px;
+  height: calc(100% + 1.4rem);
+  transform: translateX(-50%);
+}
+
+.focus-target::after {
+  left: -.7rem;
+  top: 50%;
+  width: calc(100% + 1.4rem);
+  height: 3px;
+  transform: translateY(-50%);
 }
 
 input,
@@ -503,6 +545,16 @@ label input[type="checkbox"] {
   font-size: .82rem;
 }
 
+.api-example {
+  margin: 0;
+  padding: .7rem;
+  overflow-x: auto;
+  border: 2px solid var(--ink);
+  background: #fffef7;
+  font: inherit;
+  font-size: .78rem;
+}
+
 .invite-line a {
   text-decoration: underline;
   text-decoration-thickness: 2px;
@@ -517,4 +569,28 @@ label input[type="checkbox"] {
   font-size: clamp(2rem, 12vw, 7rem);
   text-align: center;
   text-transform: uppercase;
+}
+
+.empty-prompt {
+  align-content: center;
+  gap: .6rem;
+  color: var(--ink);
+}
+
+.empty-prompt p {
+  margin: 0;
+  color: rgba(17,17,17,.35);
+}
+
+.empty-prompt a {
+  width: min(100%, 18rem);
+  padding: .8rem;
+  border: 3px solid var(--ink);
+  background: var(--blue);
+  color: #fff;
+  font-size: 1rem;
+}
+
+.pulse p {
+  margin: 0;
 }
