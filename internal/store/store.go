@@ -625,12 +625,13 @@ func (db *DB) UpdateTimestampPreference(userID int64, preference string) error {
 	return err
 }
 
-func (db *DB) UpdateSettings(userID int64, preference string, emailOptIn bool) error {
+func (db *DB) UpdateSettings(userID int64, preference string, emailOptIn bool, fediverseAcct string) error {
 	optIn := 0
 	if emailOptIn {
 		optIn = 1
 	}
-	_, err := db.Exec(`update users set timestamp_preference = ?, email_opt_in = ? where id = ?`, normalizeTimestampPreference(preference), optIn, userID)
+	_, err := db.Exec(`update users set timestamp_preference = ?, email_opt_in = ?, fediverse_acct = ? where id = ?`,
+		normalizeTimestampPreference(preference), optIn, strings.TrimSpace(fediverseAcct), userID)
 	return err
 }
 

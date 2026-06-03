@@ -992,7 +992,12 @@ func (a *App) settings(w http.ResponseWriter, r *http.Request) {
 			}
 			emailNotice = "check email to confirm"
 		}
-		if err := a.db.UpdateSettings(user.ID, r.FormValue("timestamp_preference"), r.FormValue("daily") == "on"); err != nil {
+		fediverseAcct, err := normalizeFediverseAcct(r.FormValue("fediverse"))
+		if err != nil {
+			a.render(w, r, "settings.html", a.withCSRF(w, r, a.settingsData(user, map[string]any{"Error": err.Error()})))
+			return
+		}
+		if err := a.db.UpdateSettings(user.ID, r.FormValue("timestamp_preference"), r.FormValue("daily") == "on", fediverseAcct); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -2277,6 +2282,36 @@ func normalizeSignupUsername(raw string) (string, error) {
 		return "", errors.New("handle can use letters, numbers, and underscore")
 	}
 	return value, nil
+}
+
+func normalizeFediverseAcct(raw string) (string, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return "", nil
+	}
+	value = strings.TrimPrefix(value, "@")
+	local, domain, ok := strings.Cut(value, "@")
+	if !ok || local == "" || domain == "" {
+		return "", errors.New("fediverse handle must look like @name@example.social")
+	}
+	if strings.ContainsAny(local, " \t\r\n/@") || strings.ContainsAny(domain, " \t\r\n/@:") {
+		return "", errors.New("fediverse handle must look like @name@example.social")
+	}
+	labels := strings.Split(strings.ToLower(domain), ".")
+	if len(labels) < 2 {
+		return "", errors.New("fediverse handle must look like @name@example.social")
+	}
+	for _, label := range labels {
+		if label == "" || strings.HasPrefix(label, "-") || strings.HasSuffix(label, "-") {
+			return "", errors.New("fediverse handle must look like @name@example.social")
+		}
+		for _, r := range label {
+			if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' {
+				return "", errors.New("fediverse handle must look like @name@example.social")
+			}
+		}
+	}
+	return "@" + local + "@" + strings.Join(labels, "."), nil
 }
 
 func profilePostViews(posts []store.Post, preference string) []postView {
