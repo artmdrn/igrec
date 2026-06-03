@@ -2020,6 +2020,12 @@ func clientKey(r *http.Request) string {
 
 func (a *App) settingsData(user store.User, extra map[string]any) map[string]any {
 	data := map[string]any{"User": user, "VAPIDPublic": a.cfg.VAPIDPublic}
+	profileURL := strings.TrimRight(a.cfg.BaseURL, "/") + "/@" + url.PathEscape(user.Username)
+	badgeURL := profileURL + "/badge.svg"
+	data["ProfileURL"] = profileURL
+	data["BadgeURL"] = badgeURL
+	data["BadgeMarkdown"] = "[![" + user.Username + " on igrec](" + badgeURL + ")](" + profileURL + ")"
+	data["BadgeHTML"] = `<a href="` + profileURL + `"><img src="` + badgeURL + `" alt="@` + template.HTMLEscapeString(user.Username) + ` on igrec"></a>`
 	count, _ := a.db.PasskeyCount(user.ID)
 	data["PasskeyCount"] = count
 
@@ -2775,25 +2781,50 @@ func displayTime(t time.Time, preference string, postsOnDay int) string {
 func renderBadgeSVG(user store.User, post store.Post) string {
 	wordText := template.HTMLEscapeString(post.Word)
 	userText := template.HTMLEscapeString("@" + user.Username)
-	width := 220 + len([]rune(post.Word))*12
-	if width < 360 {
-		width = 360
+	dateText := template.HTMLEscapeString(post.CreatedAt.Format("2006-01-02"))
+	width := 260 + len([]rune(post.Word))*30
+	if width < 520 {
+		width = 520
 	}
-	if width > 720 {
-		width = 720
+	if width > 980 {
+		width = 980
 	}
-	return fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="120" viewBox="0 0 %d 120" role="img" aria-label="%s said %s">
+	wordSize := 74
+	if len([]rune(post.Word)) > 10 {
+		wordSize = 58
+	}
+	if len([]rune(post.Word)) > 18 {
+		wordSize = 44
+	}
+	stripes := badgeStripePath(width)
+	return fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="180" viewBox="0 0 %d 180" role="img" aria-label="%s said %s">
 <rect width="100%%" height="100%%" fill="#f6eedc"/>
-<path d="M0 12H%dM0 24H%dM0 36H%dM0 48H%dM0 60H%dM0 72H%dM0 84H%dM0 96H%dM0 108H%d" stroke="#e4d8b8" stroke-width="1"/>
-<rect x="8" y="8" width="%d" height="104" fill="#fffef7" stroke="#111" stroke-width="4"/>
-<rect x="22" y="22" width="34" height="34" fill="#fff" stroke="#0055a4" stroke-width="4"/>
-<text x="32" y="48" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="28" font-weight="900" fill="#111">Y</text>
-<text x="82" y="48" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="28" font-weight="900" fill="#0055a4">IGREC</text>
-<text x="86" y="48" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="28" font-weight="900" fill="#ef4135">IGREC</text>
-<text x="84" y="48" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="28" font-weight="900" fill="#111">IGREC</text>
-<text x="24" y="92" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="34" font-weight="900" fill="#0055a4">%s</text>
-<text x="27" y="92" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="34" font-weight="900" fill="#ef4135">%s</text>
-<text x="25" y="92" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="34" font-weight="900" fill="#111">%s</text>
-<text x="%d" y="94" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#111">%s</text>
-</svg>`, width, width, userText, wordText, width, width, width, width, width, width, width, width, width, width-16, wordText, wordText, wordText, width-24, userText)
+<path d="%s" stroke="#e4d8b8" stroke-width="1"/>
+<rect x="10" y="10" width="%d" height="160" fill="#fffef7" stroke="#111" stroke-width="4"/>
+<rect x="24" y="24" width="30" height="30" fill="#fff" stroke="#0055a4" stroke-width="3"/>
+<text x="32" y="47" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="24" font-weight="900" fill="#111">Y</text>
+<text x="66" y="47" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="22" font-weight="900" fill="#0055a4">IGREC</text>
+<text x="70" y="47" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="22" font-weight="900" fill="#ef4135">IGREC</text>
+<text x="68" y="47" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="22" font-weight="900" fill="#111">IGREC</text>
+<text x="32" y="118" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="%d" font-weight="900" fill="#0055a4">%s</text>
+<text x="38" y="118" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="%d" font-weight="900" fill="#ef4135">%s</text>
+<text x="35" y="118" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="%d" font-weight="900" fill="#111">%s</text>
+<path d="M24 136H%d" stroke="#111" stroke-width="3"/>
+<text x="24" y="158" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#111">%s</text>
+<text x="%d" y="158" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="18" fill="#111">igrec.net · %s</text>
+</svg>`, width, width, userText, wordText, stripes, width-20, wordSize, wordText, wordSize, wordText, wordSize, wordText, width-24, userText, width-24, dateText)
+}
+
+func badgeStripePath(width int) string {
+	var b strings.Builder
+	for y := 12; y <= 172; y += 8 {
+		if b.Len() > 0 {
+			b.WriteByte(' ')
+		}
+		b.WriteString("M0 ")
+		b.WriteString(strconv.Itoa(y))
+		b.WriteString("H")
+		b.WriteString(strconv.Itoa(width))
+	}
+	return b.String()
 }

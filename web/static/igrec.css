@@ -604,6 +604,14 @@ label input[type="checkbox"] {
   font-size: .78rem;
 }
 
+.settings-badge-preview {
+  display: block;
+  width: min(100%, 520px);
+  height: auto;
+  border: 2px solid var(--ink);
+  background: #fffef7;
+}
+
 .invite-line a {
   text-decoration: underline;
   text-decoration-thickness: 2px;

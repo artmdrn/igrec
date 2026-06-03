@@ -47,6 +47,17 @@ curl -X POST -H "Authorization: Bearer {{.NewAPIToken}}" -d "word=moment" https:
         {{end}}
       </section>
     {{end}}
+    <section class="settings-section">
+      <h2>badge</h2>
+      <img class="settings-badge-preview" src="/@{{.User.Username}}/badge.svg" alt="@{{.User.Username}} badge">
+      <p class="muted">latest word for readmes, blogs, signatures, small strange places.</p>
+      <p class="system-message">markdown</p>
+      <pre class="api-example">{{.BadgeMarkdown}}</pre>
+      <p class="system-message">html</p>
+      <pre class="api-example">{{.BadgeHTML}}</pre>
+      <p class="system-message">url</p>
+      <pre class="api-example">{{.BadgeURL}}</pre>
+    </section>
     {{if .IsOperator}}
       <section class="settings-section pulse">
         <h2>pulse</h2>
