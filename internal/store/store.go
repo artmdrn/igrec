@@ -240,6 +240,15 @@ create table if not exists api_tokens (
   last_used_at datetime
 );
 create index if not exists api_tokens_user_idx on api_tokens(user_id);
+create table if not exists rel_me_links (
+  id integer primary key autoincrement,
+  user_id integer not null references users(id),
+  position integer not null,
+  url text not null,
+  created_at datetime not null default current_timestamp,
+  unique(user_id, position)
+);
+create index if not exists rel_me_links_user_idx on rel_me_links(user_id, position);
 create table if not exists activitypub_deliveries (
   id integer primary key autoincrement,
   user_id integer not null references users(id),
@@ -659,6 +668,32 @@ func (db *DB) UpdateSettings(userID int64, preference string, emailOptIn bool, f
 	return err
 }
 
+func (db *DB) UpdateSettingsProfile(userID int64, preference string, emailOptIn bool, fediverseAcct string, relMeLinks []string) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	optIn := 0
+	if emailOptIn {
+		optIn = 1
+	}
+	if _, err := tx.Exec(`update users set timestamp_preference = ?, email_opt_in = ?, fediverse_acct = ? where id = ?`,
+		normalizeTimestampPreference(preference), optIn, strings.TrimSpace(fediverseAcct), userID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`delete from rel_me_links where user_id = ?`, userID); err != nil {
+		return err
+	}
+	for i, link := range relMeLinks {
+		if _, err := tx.Exec(`insert into rel_me_links(user_id, position, url) values(?, ?, ?)`, userID, i, strings.TrimSpace(link)); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 func (db *DB) SetEmailOptIn(userID int64, emailOptIn bool) error {
 	optIn := 0
 	if emailOptIn {
@@ -675,6 +710,42 @@ func (db *DB) CreateAPIToken(userID int64, tokenHash, prefix, name string) error
 	}
 	_, err := db.Exec(`insert into api_tokens(user_id, token_hash, token_prefix, name) values(?, ?, ?, ?)`, userID, tokenHash, prefix, name)
 	return err
+}
+
+func (db *DB) ReplaceRelMeLinks(userID int64, links []string) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`delete from rel_me_links where user_id = ?`, userID); err != nil {
+		return err
+	}
+	for i, link := range links {
+		if _, err := tx.Exec(`insert into rel_me_links(user_id, position, url) values(?, ?, ?)`, userID, i, strings.TrimSpace(link)); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (db *DB) RelMeLinksByUser(userID int64) ([]string, error) {
+	rows, err := db.Query(`select url from rel_me_links where user_id = ? order by position asc, id asc`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var links []string
+	for rows.Next() {
+		var link string
+		if err := rows.Scan(&link); err != nil {
+			return nil, err
+		}
+		links = append(links, link)
+	}
+	return links, rows.Err()
 }
 
 func (db *DB) DeleteAPIToken(userID, tokenID int64) error {
@@ -786,6 +857,7 @@ func (db *DB) DeleteUser(userID int64) error {
 		`delete from activitypub_keys where user_id = ?`,
 		`delete from activitypub_deliveries where user_id = ?`,
 		`delete from api_tokens where user_id = ?`,
+		`delete from rel_me_links where user_id = ?`,
 		`delete from user_follows where follower_user_id = ? or followed_user_id = ?`,
 		`delete from daily_email_sends where user_id = ?`,
 		`delete from email_unsubscribe_tokens where user_id = ?`,

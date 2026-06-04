@@ -7,6 +7,7 @@
     <label>email <input type="email" name="email" value="{{.User.Email}}" autocomplete="email"></label>
     <label><input type="checkbox" name="daily" {{if .User.EmailOptIn}}checked{{end}}> daily word</label>
     <label>fediverse <input name="fediverse" value="{{.User.FediverseAcct}}" placeholder="@you@example.social"></label>
+    <label>rel=me links <textarea name="rel_me" rows="4" placeholder="https://example.com/@you&#10;https://github.com/you">{{.RelMeText}}</textarea></label>
     <label>timestamps
       <select name="timestamp_preference">
         <option value="date" {{if eq .User.TimestampPreference "date"}}selected{{end}}>date</option>

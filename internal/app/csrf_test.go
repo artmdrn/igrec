@@ -400,6 +400,129 @@ func TestSettingsRejectsInvalidFediverseHandle(t *testing.T) {
 	}
 }
 
+func TestSettingsPersistsRelMeLinks(t *testing.T) {
+	a := testApp(t)
+	user, err := a.db.CreateUser("member", "member@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionToken, sessionHash, err := newToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.CreateSession(sessionHash, user.ID, farFuture()); err != nil {
+		t.Fatal(err)
+	}
+
+	wGet := httptest.NewRecorder()
+	reqGet := httptest.NewRequest(http.MethodGet, "/settings", nil)
+	reqGet.AddCookie(&http.Cookie{Name: sessionCookie, Value: sessionToken})
+	a.settings(wGet, reqGet)
+
+	csrf := cookieByName(wGet.Result(), csrfCookie)
+	if csrf == nil || csrf.Value == "" {
+		t.Fatal("expected csrf cookie from GET /settings")
+	}
+
+	form := url.Values{}
+	form.Set("rel_me", "https://GitHub.com/member\nhttps://social.example/@member#proof\nhttps://github.com/member")
+	form.Set(csrfField, csrf.Value)
+	reqPost := httptest.NewRequest(http.MethodPost, "/settings", strings.NewReader(form.Encode()))
+	reqPost.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	reqPost.AddCookie(&http.Cookie{Name: sessionCookie, Value: sessionToken})
+	reqPost.AddCookie(csrf)
+	wPost := httptest.NewRecorder()
+
+	a.settings(wPost, reqPost)
+
+	if wPost.Code != http.StatusSeeOther {
+		t.Fatalf("expected status %d, got %d", http.StatusSeeOther, wPost.Code)
+	}
+	links, err := a.db.RelMeLinksByUser(user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(links) != 2 {
+		t.Fatalf("expected 2 saved rel=me links, got %#v", links)
+	}
+	if links[0] != "https://github.com/member" {
+		t.Fatalf("expected normalized github link, got %#v", links)
+	}
+	if links[1] != "https://social.example/@member" {
+		t.Fatalf("expected fragment-stripped social link, got %#v", links)
+	}
+
+	wSettings := httptest.NewRecorder()
+	reqSettings := httptest.NewRequest(http.MethodGet, "/settings", nil)
+	reqSettings.AddCookie(&http.Cookie{Name: sessionCookie, Value: sessionToken})
+	a.settings(wSettings, reqSettings)
+
+	body, err := io.ReadAll(wSettings.Result().Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "https://github.com/member\nhttps://social.example/@member") {
+		t.Fatalf("expected saved rel=me links in settings form, got %q", string(body))
+	}
+}
+
+func TestSettingsRejectsInvalidRelMeLink(t *testing.T) {
+	a := testApp(t)
+	user, err := a.db.CreateUser("member", "member@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.ReplaceRelMeLinks(user.ID, []string{"https://existing.example/member"}); err != nil {
+		t.Fatal(err)
+	}
+	sessionToken, sessionHash, err := newToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.CreateSession(sessionHash, user.ID, farFuture()); err != nil {
+		t.Fatal(err)
+	}
+
+	wGet := httptest.NewRecorder()
+	reqGet := httptest.NewRequest(http.MethodGet, "/settings", nil)
+	reqGet.AddCookie(&http.Cookie{Name: sessionCookie, Value: sessionToken})
+	a.settings(wGet, reqGet)
+
+	csrf := cookieByName(wGet.Result(), csrfCookie)
+	if csrf == nil || csrf.Value == "" {
+		t.Fatal("expected csrf cookie from GET /settings")
+	}
+
+	form := url.Values{}
+	form.Set("rel_me", "http://insecure.example/member")
+	form.Set(csrfField, csrf.Value)
+	reqPost := httptest.NewRequest(http.MethodPost, "/settings", strings.NewReader(form.Encode()))
+	reqPost.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	reqPost.AddCookie(&http.Cookie{Name: sessionCookie, Value: sessionToken})
+	reqPost.AddCookie(csrf)
+	wPost := httptest.NewRecorder()
+
+	a.settings(wPost, reqPost)
+
+	if wPost.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, wPost.Code)
+	}
+	body, err := io.ReadAll(wPost.Result().Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "rel=me links must be full https URLs") {
+		t.Fatalf("expected rel=me validation error, got %q", string(body))
+	}
+	links, err := a.db.RelMeLinksByUser(user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(links) != 1 || links[0] != "https://existing.example/member" {
+		t.Fatalf("expected existing rel=me link to remain, got %#v", links)
+	}
+}
+
 func cookieByName(resp *http.Response, name string) *http.Cookie {
 	for _, c := range resp.Cookies() {
 		if c.Name == name {

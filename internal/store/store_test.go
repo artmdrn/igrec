@@ -76,6 +76,9 @@ func TestDeleteUserRemovesDependentRecords(t *testing.T) {
 	if err := db.CreateAPIToken(user.ID, "api-hash", "api-prefix", "cli"); err != nil {
 		t.Fatal(err)
 	}
+	if err := db.ReplaceRelMeLinks(user.ID, []string{"https://example.com/@delete_me"}); err != nil {
+		t.Fatal(err)
+	}
 	if err := db.UpsertActivityPubFollower(user.ID, "https://remote.example/@follower", "https://remote.example/inbox"); err != nil {
 		t.Fatal(err)
 	}
@@ -140,6 +143,43 @@ func TestAPITokenLifecycle(t *testing.T) {
 	}
 	if len(tokens) != 0 {
 		t.Fatalf("expected token deleted, got %#v", tokens)
+	}
+}
+
+func TestRelMeLinksRoundTrip(t *testing.T) {
+	db := testDB(t)
+	user, err := db.CreateUser("links", "links@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	links := []string{
+		"https://github.com/links",
+		"https://mastodon.example/@links",
+	}
+	if err := db.ReplaceRelMeLinks(user.ID, links); err != nil {
+		t.Fatal(err)
+	}
+	got, err := db.RelMeLinksByUser(user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != len(links) {
+		t.Fatalf("expected %d links, got %#v", len(links), got)
+	}
+	for i := range links {
+		if got[i] != links[i] {
+			t.Fatalf("expected link %d to be %q, got %q", i, links[i], got[i])
+		}
+	}
+	if err := db.ReplaceRelMeLinks(user.ID, []string{"https://example.com/~links"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err = db.RelMeLinksByUser(user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != "https://example.com/~links" {
+		t.Fatalf("expected replacement links, got %#v", got)
 	}
 }
 

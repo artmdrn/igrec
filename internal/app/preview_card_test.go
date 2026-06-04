@@ -113,3 +113,29 @@ func TestBadgeServesLatestWordSVG(t *testing.T) {
 		t.Fatalf("expected badge svg to include latest word and user, got %s", body)
 	}
 }
+
+func TestProfileShowsRelMeLinks(t *testing.T) {
+	a := testApp(t)
+	user, err := a.db.CreateUser("links", "links@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.ReplaceRelMeLinks(user.ID, []string{
+		"https://github.com/links",
+		"https://social.example/@links",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/@links", nil)
+	w := httptest.NewRecorder()
+	a.profile(w, req)
+
+	body := w.Body.String()
+	if !strings.Contains(body, `rel="me" href="https://github.com/links"`) {
+		t.Fatalf("expected github rel=me link, got %s", body)
+	}
+	if !strings.Contains(body, `rel="me" href="https://social.example/@links"`) {
+		t.Fatalf("expected social rel=me link, got %s", body)
+	}
+}

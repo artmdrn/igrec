@@ -604,6 +604,9 @@ func (a *App) profile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := map[string]any{"User": user, "Posts": a.styledPostViews(posts, user.TimestampPreference), "Months": months, "Title": title, "BadgeURL": badgeURL(a.cfg.BaseURL, user)}
+	if relMeLinks, err := a.db.RelMeLinksByUser(user.ID); err == nil && len(relMeLinks) > 0 {
+		data["RelMeLinks"] = relMeLinks
+	}
 	if inviter, err := a.db.InviterByUserID(user.ID); err == nil {
 		data["Inviter"] = inviter
 	}
@@ -1092,7 +1095,12 @@ func (a *App) settings(w http.ResponseWriter, r *http.Request) {
 			a.render(w, r, "settings.html", a.withCSRF(w, r, a.settingsData(user, map[string]any{"Error": err.Error()})))
 			return
 		}
-		if err := a.db.UpdateSettings(user.ID, r.FormValue("timestamp_preference"), r.FormValue("daily") == "on", fediverseAcct); err != nil {
+		relMeLinks, err := normalizeRelMeLinks(r.FormValue("rel_me"))
+		if err != nil {
+			a.render(w, r, "settings.html", a.withCSRF(w, r, a.settingsData(user, map[string]any{"Error": err.Error(), "RelMeText": strings.TrimSpace(r.FormValue("rel_me"))})))
+			return
+		}
+		if err := a.db.UpdateSettingsProfile(user.ID, r.FormValue("timestamp_preference"), r.FormValue("daily") == "on", fediverseAcct, relMeLinks); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -1165,6 +1173,7 @@ func (a *App) export(w http.ResponseWriter, r *http.Request) {
 			"fediverse":            "@" + user.Username + "@igrec.net",
 			"domain":               user.Domain,
 			"fediverse_acct":       user.FediverseAcct,
+			"rel_me":               mustRelMeLinks(a.db.RelMeLinksByUser(user.ID)),
 			"timestamp_preference": user.TimestampPreference,
 			"created_at":           user.CreatedAt.UTC().Format(time.RFC3339),
 		},
@@ -2028,6 +2037,10 @@ func (a *App) settingsData(user store.User, extra map[string]any) map[string]any
 	data["BadgeHTML"] = `<a href="` + profileURL + `"><img src="` + badgeURL + `" alt="@` + template.HTMLEscapeString(user.Username) + ` on igrec"></a>`
 	count, _ := a.db.PasskeyCount(user.ID)
 	data["PasskeyCount"] = count
+	if relMeLinks, err := a.db.RelMeLinksByUser(user.ID); err == nil {
+		data["RelMeLinks"] = relMeLinks
+		data["RelMeText"] = strings.Join(relMeLinks, "\n")
+	}
 
 	invites, _ := a.db.InvitesByInviter(user.ID)
 	views := make([]inviteView, 0, len(invites))
@@ -2431,6 +2444,39 @@ func normalizeFediverseAcct(raw string) (string, error) {
 		}
 	}
 	return "@" + local + "@" + strings.Join(labels, "."), nil
+}
+
+func normalizeRelMeLinks(raw string) ([]string, error) {
+	lines := strings.Split(strings.ReplaceAll(raw, "\r\n", "\n"), "\n")
+	links := make([]string, 0, len(lines))
+	seen := make(map[string]struct{}, len(lines))
+	for _, line := range lines {
+		value := strings.TrimSpace(line)
+		if value == "" {
+			continue
+		}
+		parsed, err := url.Parse(value)
+		if err != nil || !parsed.IsAbs() || !strings.EqualFold(parsed.Scheme, "https") || parsed.Host == "" || parsed.User != nil {
+			return nil, errors.New("rel=me links must be full https URLs")
+		}
+		parsed.Scheme = "https"
+		parsed.Host = strings.ToLower(parsed.Host)
+		parsed.Fragment = ""
+		normalized := parsed.String()
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		links = append(links, normalized)
+	}
+	return links, nil
+}
+
+func mustRelMeLinks(links []string, err error) []string {
+	if err != nil {
+		return nil
+	}
+	return links
 }
 
 func profilePostViews(posts []store.Post, preference string) []postView {
