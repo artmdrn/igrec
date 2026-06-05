@@ -1,6 +1,8 @@
 package app
 
 import (
+	"crypto/ecdh"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/mail"
@@ -46,7 +48,48 @@ func (c Config) Validate() error {
 			return errors.New("RESEND_API_KEY is required for production")
 		}
 	}
+	if err := validateVAPIDKeys(c.VAPIDPublic, c.VAPIDPrivate); err != nil {
+		return err
+	}
 
+	return nil
+}
+
+func validateVAPIDKeys(publicKey, privateKey string) error {
+	publicKey = strings.TrimSpace(publicKey)
+	privateKey = strings.TrimSpace(privateKey)
+	if publicKey == "" && privateKey == "" {
+		return nil
+	}
+	if publicKey == "" || privateKey == "" {
+		return errors.New("VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY must both be set")
+	}
+	publicRaw, err := base64.RawURLEncoding.DecodeString(publicKey)
+	if err != nil {
+		return errors.New("VAPID_PUBLIC_KEY must be base64url-encoded")
+	}
+	privateRaw, err := base64.RawURLEncoding.DecodeString(privateKey)
+	if err != nil {
+		return errors.New("VAPID_PRIVATE_KEY must be base64url-encoded")
+	}
+	curve := ecdh.P256()
+	privateECDH, err := curve.NewPrivateKey(privateRaw)
+	if err != nil {
+		return errors.New("VAPID_PRIVATE_KEY must be a valid P-256 private key")
+	}
+	publicECDH, err := curve.NewPublicKey(publicRaw)
+	if err != nil {
+		return errors.New("VAPID_PUBLIC_KEY must be a valid uncompressed P-256 public key")
+	}
+	if publicECDH.Bytes()[0] != 4 {
+		return errors.New("VAPID_PUBLIC_KEY must use uncompressed P-256 format")
+	}
+	if publicKey != base64.RawURLEncoding.EncodeToString(publicECDH.Bytes()) {
+		return errors.New("VAPID_PUBLIC_KEY must use uncompressed P-256 format")
+	}
+	if publicKey != base64.RawURLEncoding.EncodeToString(privateECDH.PublicKey().Bytes()) {
+		return errors.New("VAPID keys do not match")
+	}
 	return nil
 }
 
