@@ -96,7 +96,7 @@ Done when:
 
 ## Phase 6: PWA And Notifications
 
-- Add service worker and install metadata.
+- [x] Add service worker and install metadata.
 - Add VAPID key validation.
 - Add push subscription storage.
 - Send Web Push notifications for daily prompt and relevant account events.
