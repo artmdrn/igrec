@@ -2476,10 +2476,8 @@ func firstInboundWord(text string) (string, error) {
 			strings.HasPrefix(strings.ToLower(line), "on ") {
 			continue
 		}
-		for _, field := range strings.Fields(line) {
-			if value, err := word.Normalize(field); err == nil {
-				return value, nil
-			}
+		if value, err := word.Normalize(line); err == nil {
+			return value, nil
 		}
 	}
 	return "", errors.New("no word found")
