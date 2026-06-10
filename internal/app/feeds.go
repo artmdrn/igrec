@@ -43,6 +43,10 @@ func (a *App) route(w http.ResponseWriter, r *http.Request) {
 		a.today(w, r)
 		return
 	}
+	if r.URL.Path == "/about" {
+		a.about(w, r)
+		return
+	}
 	if strings.HasPrefix(r.URL.Path, "/@") {
 		a.profile(w, r)
 		return
@@ -71,6 +75,7 @@ func (a *App) today(w http.ResponseWriter, r *http.Request) {
 	}
 	data := feedData(a.styledPostViews(posts, "datetime"), pageSize, "today", "/today")
 	data["PageTitle"] = "today"
+	data["Edition"] = time.Now().Format("Monday 02 January 2006")
 	a.render(w, r, "index.html", data)
 }
 
@@ -251,6 +256,12 @@ func (a *App) writeData(user store.User, extra map[string]any) map[string]any {
 				break
 			}
 		}
+	}
+	if count := a.userStreak(user.ID); count > 1 {
+		data["Streak"] = count
+	}
+	if onThisDay, err := a.db.PostsOnThisDay(user.ID, time.Now()); err == nil && len(onThisDay) > 0 {
+		data["OnThisDay"] = a.styledPostViews(onThisDay, "date")
 	}
 	for key, value := range extra {
 		data[key] = value

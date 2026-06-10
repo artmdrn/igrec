@@ -1216,6 +1216,36 @@ func (db *DB) AllPostsByUser(username string) ([]Post, error) {
 	return db.postsWithoutLimit(`where users.username = ?`, username)
 }
 
+// PostsOnThisDay returns the user's words posted on the same calendar
+// day (UTC) in earlier years, newest first.
+func (db *DB) PostsOnThisDay(userID int64, now time.Time) ([]Post, error) {
+	day := now.UTC().Format("01-02")
+	year := now.UTC().Format("2006")
+	return db.postsWithoutLimit(
+		`where posts.user_id = ? and strftime('%m-%d', posts.created_at) = ? and strftime('%Y', posts.created_at) < ?`,
+		userID, day, year)
+}
+
+// PostDays returns the user's distinct posting days as UTC dates
+// (YYYY-MM-DD), newest first, up to limit.
+func (db *DB) PostDays(userID int64, limit int) ([]string, error) {
+	rows, err := db.Query(`select distinct date(created_at) from posts where user_id = ? order by 1 desc limit ?`, userID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var days []string
+	for rows.Next() {
+		var day string
+		if err := rows.Scan(&day); err != nil {
+			return nil, err
+		}
+		days = append(days, day)
+	}
+	return days, rows.Err()
+}
+
 func (db *DB) count(query string, args ...any) (int, error) {
 	var count int
 	err := db.QueryRow(query, args...).Scan(&count)

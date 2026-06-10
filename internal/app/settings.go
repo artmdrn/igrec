@@ -344,6 +344,9 @@ func (a *App) settingsData(user store.User, extra map[string]any) map[string]any
 	data["AppleWalletURL"] = "/wallet/apple.pkpass"
 	count, _ := a.db.PasskeyCount(user.ID)
 	data["PasskeyCount"] = count
+	if streakCount := a.userStreak(user.ID); streakCount > 1 {
+		data["Streak"] = streakCount
+	}
 	if relMeLinks, err := a.db.RelMeLinksByUser(user.ID); err == nil {
 		data["RelMeLinks"] = relMeLinks
 		data["RelMeText"] = strings.Join(relMeLinks, "\n")

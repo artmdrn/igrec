@@ -23,6 +23,7 @@
 
     <section class="settings-section">
       <h2>posting</h2>
+      {{if .Streak}}<p class="pulse-line">pulse: {{.Streak}} days in a row. only you can see this.</p>{{end}}
       <label class="check-row"><input type="checkbox" name="daily" {{if .User.EmailOptIn}}checked{{end}}> daily word email</label>
       <label>timestamps
         <select name="timestamp_preference">

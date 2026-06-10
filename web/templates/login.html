@@ -1,13 +1,21 @@
 {{template "head" .}}
-<main class="settings">
-  <p class="system-message" data-passkey-status></p>
-  <button type="button" data-passkey="login">passkey</button>
+<main class="settings auth">
+  <header class="auth-head">
+    <p class="settings-kicker">login</p>
+    <h1>hello again</h1>
+    <p class="muted">no passwords. we email you a one-time link. once inside, you can add a passkey for instant logins.</p>
+  </header>
   <form method="post" action="/login">
     {{if .Error}}<p class="error system-message">{{.Error}}</p>{{end}}
     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
     <input type="hidden" name="next" value="{{.Next}}">
     <label>email <input type="email" name="email" value="{{.Email}}" autocomplete="email" required></label>
-    <button type="submit">send link</button>
+    <button type="submit">email me a login link</button>
   </form>
+  <div class="auth-alt">
+    <p class="system-message" data-passkey-status></p>
+    <button type="button" class="button" data-passkey="login">use a passkey instead</button>
+  </div>
+  <p class="muted auth-foot">new here? igrec is invite-only &mdash; ask someone who is already in, or read <a href="/about">what this is</a>.</p>
 </main>
 {{template "foot" .}}

@@ -3,6 +3,10 @@
   <form method="post" action="/write" enctype="multipart/form-data" class="compose" data-compose>
     {{if .Error}}<p class="error system-message">{{.Error}}</p>{{end}}
     {{if .TodayPost}}<p class="today-word">today: <a href="{{.TodayPost.URL}}">{{.TodayPost.Word}}</a></p>{{end}}
+    {{if .OnThisDay}}
+      <p class="on-this-day">on this day{{range .OnThisDay}} · <a href="{{.URL}}">{{.Word}}</a> <span>{{.CreatedAt.Format "2006"}}</span>{{end}}</p>
+    {{end}}
+    {{if .Streak}}<p class="pulse-line">day {{.Streak}}</p>{{end}}
     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
     <input type="hidden" name="focus_x" value="0.5" data-focus-x>
     <input type="hidden" name="focus_y" value="0.5" data-focus-y>

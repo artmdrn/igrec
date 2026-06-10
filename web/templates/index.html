@@ -1,5 +1,12 @@
 {{template "head" .}}
 <main class="feed" aria-label="{{if .FeedTitle}}{{.FeedTitle}}{{else}}public{{end}} feed">
+  {{if .Edition}}<p class="edition">{{.Edition}}</p>{{end}}
+  {{if and (eq .FeedTitle "public") (not .CurrentUser)}}
+    <section class="intro">
+      <p>one word at a time. no likes, no follower counts, no algorithm.</p>
+      <a href="/about">what is this?</a>
+    </section>
+  {{end}}
   {{range .Posts}}
     <article class="word {{if .HasImage}}word-photo{{end}}">
       <a class="said" href="/@{{.Username}}">@{{.Username}}</a>

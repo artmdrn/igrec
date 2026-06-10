@@ -1,0 +1,27 @@
+{{template "head" .}}
+<main class="about">
+  <section class="about-manifesto">
+    <h1>igrec</h1>
+    <p class="about-tagline">one word at a time.</p>
+    <ul>
+      <li>one word per post. that is the whole form.</li>
+      <li>no likes, no follower counts, no algorithm. the feed is just time.</li>
+      <li>invite-only. small on purpose. ask someone who is already here.</li>
+      <li>federated: follow <b>@anyone@igrec.net</b> from Mastodon or any fediverse home.</li>
+      <li>email is a real client: reply to the daily nudge with tomorrow&rsquo;s word.</li>
+      <li>your words stay yours. export everything, leave whenever.</li>
+    </ul>
+  </section>
+  <section class="about-colophon">
+    <p class="system-message">colophon</p>
+    <p>igrec is a single small Go binary and a SQLite file on one modest server.
+    server-rendered HTML, no trackers, no analytics, no framework.
+    the name is the French letter <b>y</b> &mdash; i&nbsp;grec, the greek i.</p>
+    <p class="about-links">
+      <a href="/">the feed</a> ·
+      <a href="/today">today</a> ·
+      <a href="/login">login</a>
+    </p>
+  </section>
+</main>
+{{template "foot" .}}

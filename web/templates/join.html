@@ -1,5 +1,10 @@
 {{template "head" .}}
-<main class="settings">
+<main class="settings auth">
+  <header class="auth-head">
+    <p class="settings-kicker">join</p>
+    <h1>pick a handle</h1>
+    <p class="muted">your invite gets you a home at igrec.net: one word at a time, followable from the whole fediverse.</p>
+  </header>
   <form method="post" action="/join">
     {{if .Error}}<p class="error system-message">{{.Error}}</p>{{end}}
     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
@@ -13,5 +18,6 @@
     <label>email <input type="email" name="email" value="{{.Email}}" autocomplete="email" required></label>
     <button type="submit">join</button>
   </form>
+  <p class="muted auth-foot">curious first? read <a href="/about">what igrec is</a>.</p>
 </main>
 {{template "foot" .}}

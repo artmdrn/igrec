@@ -4,7 +4,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#111111">
+  <meta name="theme-color" content="#f6eedc" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#16140f" media="(prefers-color-scheme: dark)">
   <link rel="icon" type="image/png" sizes="32x32" href="{{asset "favicon-32.png"}}">
   <link rel="apple-touch-icon" href="{{asset "apple-touch-icon.png"}}">
   <link rel="manifest" href="/manifest.webmanifest">
@@ -46,6 +47,7 @@
       {{if .CurrentUser}}
         <a href="/settings">@{{.CurrentUser.Username}}</a>
       {{else}}
+        <a href="/about">about</a>
         <a href="/login">login</a>
       {{end}}
       <button class="share-button" type="button" data-share hidden>share</button>

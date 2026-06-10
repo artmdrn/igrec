@@ -1,9 +1,40 @@
 :root {
-  color-scheme: light;
+  color-scheme: light dark;
   --ink: #111;
   --paper: #f6eedc;
+  --card: var(--card);
   --blue: #0055a4;
   --red: #ef4135;
+  --paper-line: rgba(0, 0, 0, .04);
+  --tile: rgba(255, 255, 255, .28);
+  --muted: rgba(17, 17, 17, .6);
+  --faint: rgba(17, 17, 17, .35);
+  --compose-bg: linear-gradient(140deg, #fff7cf 0%, #ffe9db 42%, #f9f0ff 100%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #efe7d3;
+    --paper: #16140f;
+    --card: #1e1b14;
+    --blue: #6ea8ff;
+    --red: #ff6a5e;
+    --paper-line: rgba(255, 255, 255, .045);
+    --tile: rgba(255, 255, 255, .05);
+    --muted: rgba(239, 231, 211, .62);
+    --faint: rgba(239, 231, 211, .38);
+    --compose-bg: linear-gradient(140deg, #26200f 0%, #2a1c14 42%, #211c2b 100%);
+  }
+}
+
+::selection {
+  background: var(--blue);
+  color: var(--paper);
+}
+
+:focus-visible {
+  outline: 3px solid var(--blue);
+  outline-offset: 2px;
 }
 
 * {
@@ -14,7 +45,7 @@ body {
   margin: 0;
   color: var(--ink);
   background:
-    repeating-linear-gradient(0deg, rgba(0,0,0,.04), rgba(0,0,0,.04) 1px, transparent 1px, transparent 6px),
+    repeating-linear-gradient(0deg, var(--paper-line), var(--paper-line) 1px, transparent 1px, transparent 6px),
     var(--paper);
   font: 16px/1.35 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   letter-spacing: 0;
@@ -117,7 +148,7 @@ main {
   min-height: 3.2rem;
   margin-top: 1rem;
   border: 3px solid var(--ink);
-  background: #fffef7;
+  background: var(--card);
   text-transform: uppercase;
 }
 
@@ -205,7 +236,7 @@ time {
   padding: .55rem;
   border-right: 2px solid var(--ink);
   border-bottom: 2px solid var(--ink);
-  background: rgba(255,255,255,.32);
+  background: var(--tile);
 }
 
 .echoes span {
@@ -228,7 +259,7 @@ time {
 }
 
 .invited-by {
-  color: rgba(17,17,17,.68);
+  color: var(--muted);
 }
 
 .badge-link {
@@ -236,7 +267,7 @@ time {
   margin-top: .75rem;
   padding: .25rem .45rem;
   border: 2px solid var(--ink);
-  background: #fffef7;
+  background: var(--card);
   color: var(--red);
   text-transform: uppercase;
 }
@@ -252,7 +283,7 @@ time {
 .archive-nav a {
   border: 2px solid var(--ink);
   padding: .25rem .45rem;
-  background: #fffef7;
+  background: var(--card);
 }
 
 .inline-action {
@@ -282,7 +313,7 @@ h1 {
   padding: .7rem;
   border-right: 2px solid var(--ink);
   border-bottom: 2px solid var(--ink);
-  background: rgba(255,255,255,.25);
+  background: var(--tile);
 }
 
 .tile-photo {
@@ -389,7 +420,7 @@ h1 {
 .settings-links a {
   padding: .25rem .45rem;
   border: 2px solid var(--ink);
-  background: #fffef7;
+  background: var(--card);
 }
 
 .token-row {
@@ -397,7 +428,7 @@ h1 {
   grid-template-columns: minmax(0, 1fr) minmax(8rem, 12rem);
   gap: .55rem;
   align-items: center;
-  border-top: 1px solid rgba(17,17,17,.35);
+  border-top: 1px solid var(--faint);
   padding-top: .55rem;
 }
 
@@ -414,8 +445,8 @@ h1 {
   padding: 1rem;
   border: 3px solid var(--ink);
   background:
-    linear-gradient(140deg, #fff7cf 0%, #ffe9db 42%, #f9f0ff 100%);
-  box-shadow: 10px 10px 0 #111;
+    var(--compose-bg);
+  box-shadow: 10px 10px 0 var(--ink);
 }
 
 .posted {
@@ -433,8 +464,8 @@ h1 {
   padding: 1rem;
   border: 3px solid var(--ink);
   background:
-    repeating-linear-gradient(0deg, rgba(0,0,0,.05), rgba(0,0,0,.05) 1px, transparent 1px, transparent 8px),
-    #fffef7;
+    repeating-linear-gradient(0deg, var(--paper-line), var(--paper-line) 1px, transparent 1px, transparent 8px),
+    var(--card);
   overflow: hidden;
   box-shadow: 10px 10px 0 var(--ink);
 }
@@ -494,17 +525,17 @@ h1 {
 .compose-preview {
   position: relative;
   min-height: 3.2rem;
-  border: 2px dashed rgba(17,17,17,.55);
+  border: 2px dashed var(--muted);
   background:
-    repeating-linear-gradient(0deg, rgba(0,0,0,.045), rgba(0,0,0,.045) 1px, transparent 1px, transparent 7px),
-    rgba(255,255,255,.35);
+    repeating-linear-gradient(0deg, var(--paper-line), var(--paper-line) 1px, transparent 1px, transparent 7px),
+    var(--tile);
   overflow: hidden;
 }
 
 .compose-preview.ready {
   aspect-ratio: 1 / 1;
   border: 3px solid var(--ink);
-  background: #111;
+  background: #0c0e12;
   box-shadow: 8px 8px 0 var(--ink);
   cursor: crosshair;
 }
@@ -563,7 +594,7 @@ button,
   width: 100%;
   border: 3px solid var(--ink);
   border-radius: 0;
-  background: #fffef7;
+  background: var(--card);
   color: var(--ink);
   font: inherit;
 }
@@ -583,7 +614,7 @@ button {
   min-height: 3.2rem;
   padding: .8rem;
   background: var(--blue);
-  color: #fff;
+  color: var(--paper);
   text-transform: uppercase;
   cursor: pointer;
 }
@@ -593,7 +624,7 @@ button {
   min-height: 3.2rem;
   place-items: center;
   padding: .8rem;
-  background: #fffef7;
+  background: var(--card);
   text-transform: uppercase;
 }
 
@@ -619,7 +650,7 @@ textarea {
   resize: vertical;
   border: 3px solid var(--ink);
   border-radius: 0;
-  background: #fffef7;
+  background: var(--card);
   color: var(--ink);
   font: inherit;
   padding: .8rem;
@@ -641,7 +672,7 @@ textarea {
   padding: 0 .8rem;
   border: 3px solid var(--ink);
   background: var(--red);
-  color: #fff;
+  color: var(--paper);
   white-space: nowrap;
 }
 
@@ -681,7 +712,7 @@ textarea {
 }
 
 .muted {
-  color: rgba(17,17,17,.6);
+  color: var(--muted);
 }
 
 .invite-line {
@@ -693,7 +724,7 @@ textarea {
   padding: .7rem;
   overflow-x: auto;
   border: 2px solid var(--ink);
-  background: #fffef7;
+  background: var(--card);
   font: inherit;
   font-size: .78rem;
 }
@@ -703,7 +734,7 @@ textarea {
   width: min(100%, 520px);
   height: auto;
   border: 2px solid var(--ink);
-  background: #fffef7;
+  background: var(--card);
 }
 
 .invite-line a {
@@ -716,7 +747,7 @@ textarea {
   min-height: 70vh;
   display: grid;
   place-items: center;
-  color: rgba(17,17,17,.45);
+  color: var(--faint);
   font-size: clamp(2rem, 12vw, 7rem);
   text-align: center;
   text-transform: uppercase;
@@ -730,7 +761,7 @@ textarea {
 
 .empty-prompt p {
   margin: 0;
-  color: rgba(17,17,17,.35);
+  color: var(--faint);
 }
 
 .empty-prompt a {
@@ -738,10 +769,144 @@ textarea {
   padding: .8rem;
   border: 3px solid var(--ink);
   background: var(--blue);
-  color: #fff;
+  color: var(--paper);
   font-size: 1rem;
 }
 
 .pulse p {
   margin: 0;
+}
+
+.edition {
+  margin: 0;
+  padding: .55rem 0;
+  border-bottom: 3px double var(--ink);
+  color: var(--blue);
+  font-size: .85rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.intro {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem .9rem;
+  align-items: baseline;
+  padding: .7rem .8rem;
+  border: 2px solid var(--ink);
+  background: var(--card);
+}
+
+.intro p {
+  margin: 0;
+  text-transform: uppercase;
+  font-size: .82rem;
+}
+
+.intro a {
+  color: var(--blue);
+  border-bottom: 2px solid var(--blue);
+  text-transform: uppercase;
+  font-size: .82rem;
+}
+
+.on-this-day {
+  margin: 0;
+  color: var(--muted);
+  font-size: .82rem;
+  text-transform: uppercase;
+}
+
+.on-this-day a {
+  font-weight: 900;
+  border-bottom: 2px solid var(--red);
+}
+
+.on-this-day span {
+  color: var(--faint);
+}
+
+.pulse-line {
+  margin: 0;
+  color: var(--blue);
+  font-size: .82rem;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.auth {
+  width: min(100%, 560px);
+  margin: 0 auto;
+}
+
+.auth-head {
+  display: grid;
+  gap: .4rem;
+  padding-bottom: 1rem;
+  border-bottom: 3px solid var(--ink);
+}
+
+.auth-head h1 {
+  font-size: clamp(2.4rem, 10vw, 5rem);
+}
+
+.auth-alt {
+  display: grid;
+  gap: .5rem;
+  margin-top: 1.4rem;
+  padding-top: 1rem;
+  border-top: 2px solid var(--ink);
+}
+
+.auth-foot {
+  margin-top: 1.2rem;
+}
+
+.auth-foot a,
+.about-colophon a {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+.about {
+  display: grid;
+  gap: 1.6rem;
+  width: min(100%, 760px);
+  margin: 0 auto;
+}
+
+.about-manifesto h1 {
+  text-shadow: 3px 0 var(--red), -3px 0 var(--blue);
+}
+
+.about-tagline {
+  margin: .4rem 0 0;
+  color: var(--blue);
+  font-size: 1.05rem;
+  text-transform: uppercase;
+}
+
+.about-manifesto ul {
+  display: grid;
+  gap: .55rem;
+  margin: 1.2rem 0 0;
+  padding-left: 1.2rem;
+  list-style: square;
+}
+
+.about-colophon {
+  padding-top: 1rem;
+  border-top: 3px solid var(--ink);
+}
+
+.about-colophon p {
+  margin: 0 0 .6rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
 }
