@@ -61,7 +61,7 @@ func TestWritePostShowsCommittedWordBeforeRedirect(t *testing.T) {
 	if !strings.Contains(html, "Integration") {
 		t.Fatalf("expected committed word screen, got %s", html)
 	}
-	if !strings.Contains(html, `http-equiv="refresh" content="6; url=/@cc00ffee/Integration"`) {
+	if !strings.Contains(html, `http-equiv="refresh" content="6; url=/@cc00ffee/1-Integration"`) {
 		t.Fatalf("expected refresh to post permalink, got %s", html)
 	}
 }

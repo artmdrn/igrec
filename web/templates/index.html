@@ -4,13 +4,13 @@
     <article class="word {{if .HasImage}}word-photo{{end}}">
       <a class="said" href="/@{{.Username}}">@{{.Username}}</a>
       {{if .HasImage}}
-        <a class="photo" href="/@{{.Username}}/{{.Word}}">
+        <a class="photo" href="{{.URL}}">
           <img src="{{.ImageURL.String}}" alt="" style="{{.FocusCSS}}">
           <span class="value caption" style="{{.CaptionCSS}}">{{.Word}}</span>
         </a>
         <time>{{.CreatedAt.Format "2006-01-02 15:04"}}</time>
       {{else}}
-        <a class="value" href="/@{{.Username}}/{{.Word}}">{{.Word}}</a>
+        <a class="value" href="{{.URL}}">{{.Word}}</a>
         <time>{{.CreatedAt.Format "2006-01-02 15:04"}}</time>
       {{end}}
     </article>

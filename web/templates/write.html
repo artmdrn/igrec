@@ -2,7 +2,7 @@
 <main class="write">
   <form method="post" action="/write" enctype="multipart/form-data" class="compose" data-compose>
     {{if .Error}}<p class="error system-message">{{.Error}}</p>{{end}}
-    {{if .TodayPost}}<p class="today-word">today: <a href="/@{{.TodayPost.Username}}/{{.TodayPost.Word}}">{{.TodayPost.Word}}</a></p>{{end}}
+    {{if .TodayPost}}<p class="today-word">today: <a href="{{.TodayPost.URL}}">{{.TodayPost.Word}}</a></p>{{end}}
     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
     <input type="hidden" name="focus_x" value="0.5" data-focus-x>
     <input type="hidden" name="focus_y" value="0.5" data-focus-y>

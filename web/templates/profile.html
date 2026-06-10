@@ -31,7 +31,7 @@
   </section>
   <section class="grid" aria-label="word archive">
     {{range .Posts}}
-      <a class="tile {{if .HasImage}}tile-photo{{end}}" href="/@{{.Username}}/{{.Word}}">
+      <a class="tile {{if .HasImage}}tile-photo{{end}}" href="{{.URL}}">
         {{if .HasImage}}
           <img src="{{.ImageURL.String}}" alt="" style="{{.FocusCSS}}">
           <span style="{{.CaptionCSS}}">{{.Word}}</span>

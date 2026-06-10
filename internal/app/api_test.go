@@ -39,6 +39,17 @@ func TestAPICreateWordWithToken(t *testing.T) {
 	if len(posts) != 1 || posts[0].Word != "stillness" {
 		t.Fatalf("expected api-created post, got %#v", posts)
 	}
+	var payload struct {
+		Word struct {
+			URL string `json:"url"`
+		} `json:"word"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Word.URL != "http://localhost:8080/@apiuser/1-stillness" {
+		t.Fatalf("expected canonical post url, got %q", payload.Word.URL)
+	}
 }
 
 func TestAPICreateWordRejectsMissingToken(t *testing.T) {

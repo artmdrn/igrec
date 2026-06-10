@@ -78,6 +78,8 @@ type postView struct {
 	HasImage    bool
 	CaptionCSS  template.CSS
 	FocusCSS    template.CSS
+	URL         string
+	PreviewURL  string
 }
 
 type operatorPulse struct {
@@ -378,7 +380,7 @@ func (a *App) postPreviewCard(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	post, err := a.db.PostByUserWord(username, value)
+	post, err := postByPathSegment(a.db, username, value)
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -418,6 +420,36 @@ func previewCardPathParts(path string) (string, string, bool) {
 		return "", "", false
 	}
 	return username, value, true
+}
+
+func canonicalPostSlug(post store.Post) string {
+	return strconv.FormatInt(post.ID, 10) + "-" + post.Word
+}
+
+func postByPathSegment(db *store.DB, username, segment string) (store.Post, error) {
+	if id, value, ok := canonicalPostSegment(segment); ok {
+		post, err := db.PostByID(id)
+		if err != nil {
+			return store.Post{}, err
+		}
+		if post.Username != username || post.Word != value {
+			return store.Post{}, os.ErrNotExist
+		}
+		return post, nil
+	}
+	return db.PostByUserWord(username, segment)
+}
+
+func canonicalPostSegment(segment string) (int64, string, bool) {
+	hyphen := strings.IndexByte(segment, '-')
+	if hyphen <= 0 || hyphen == len(segment)-1 {
+		return 0, "", false
+	}
+	id, err := strconv.ParseInt(segment[:hyphen], 10, 64)
+	if err != nil || id < 1 {
+		return 0, "", false
+	}
+	return id, segment[hyphen+1:], true
 }
 
 func renderPreviewCard(post store.Post) (image.Image, error) {
@@ -576,7 +608,7 @@ func (a *App) profile(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 			return
 		}
-		post, err := a.db.PostByUserWord(user.Username, value)
+		post, err := postByPathSegment(a.db, user.Username, value)
 		if err != nil {
 			http.NotFound(w, r)
 			return
@@ -693,7 +725,7 @@ func (a *App) write(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		go a.deliverPost(post)
-		postPath := "/@" + url.PathEscape(post.Username) + "/" + url.PathEscape(post.Word)
+		postPath := "/@" + url.PathEscape(post.Username) + "/" + url.PathEscape(canonicalPostSlug(post))
 		data := map[string]any{
 			"PageTitle":      post.Word,
 			"Post":           a.styledPostViews([]store.Post{post}, user.TimestampPreference)[0],
@@ -2268,11 +2300,11 @@ func activitypubOutbox(baseURL string, posts []store.Post) map[string]any {
 }
 
 func postURL(baseURL string, post store.Post) string {
-	return strings.TrimRight(baseURL, "/") + "/@" + url.PathEscape(post.Username) + "/" + url.PathEscape(post.Word)
+	return strings.TrimRight(baseURL, "/") + "/@" + url.PathEscape(post.Username) + "/" + url.PathEscape(canonicalPostSlug(post))
 }
 
 func previewCardURL(baseURL string, post store.Post) string {
-	return strings.TrimRight(baseURL, "/") + "/og/@" + url.PathEscape(post.Username) + "/" + url.PathEscape(post.Word) + ".png"
+	return strings.TrimRight(baseURL, "/") + "/og/@" + url.PathEscape(post.Username) + "/" + url.PathEscape(canonicalPostSlug(post)) + ".png"
 }
 
 func badgeURL(baseURL string, user store.User) string {
@@ -2583,6 +2615,8 @@ func profilePostViews(posts []store.Post, preference string) []postView {
 func (a *App) styledPostViews(posts []store.Post, preference string) []postView {
 	views := profilePostViews(posts, preference)
 	for i := range views {
+		views[i].URL = postURL(a.cfg.BaseURL, views[i].Post)
+		views[i].PreviewURL = previewCardURL(a.cfg.BaseURL, views[i].Post)
 		if !views[i].HasImage {
 			continue
 		}

@@ -3,13 +3,13 @@
   <article class="word {{if .Post.HasImage}}word-photo{{end}}">
     <a class="said" href="/@{{.User.Username}}">@{{.User.Username}}</a>
     {{if .Post.HasImage}}
-      <a class="photo" href="/@{{.User.Username}}/{{.Post.Word}}">
+      <a class="photo" href="{{.Post.URL}}">
         <img src="{{.Post.ImageURL.String}}" alt="" style="{{.Post.FocusCSS}}">
         <span class="value caption" style="{{.Post.CaptionCSS}}">{{.Post.Word}}</span>
       </a>
       <time datetime="{{.Post.MachineTime}}">{{.Post.DisplayTime}}</time>
     {{else}}
-      <a class="value" href="/@{{.User.Username}}/{{.Post.Word}}">{{.Post.Word}}</a>
+      <a class="value" href="{{.Post.URL}}">{{.Post.Word}}</a>
       <time datetime="{{.Post.MachineTime}}">{{.Post.DisplayTime}}</time>
     {{end}}
   </article>
@@ -18,7 +18,7 @@
       <p>echoes</p>
       <div>
         {{range .Echoes}}
-          <a href="/@{{.Username}}/{{.Word}}">
+          <a href="{{.URL}}">
             <span>@{{.Username}}</span>
             <time datetime="{{.MachineTime}}">{{.DisplayTime}}</time>
           </a>
