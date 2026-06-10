@@ -44,7 +44,7 @@ func New(cfg Config, db *store.DB) http.Handler {
 	app := NewAppForJobs(cfg, db)
 
 	mux := http.NewServeMux()
-	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static"))))
+	mux.Handle("/static/", staticHandler())
 	mux.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir(cfg.UploadDir))))
 	mux.HandleFunc("/service-worker.js", app.serviceWorker)
 	mux.HandleFunc("/", app.route)
@@ -73,14 +73,14 @@ func New(cfg Config, db *store.DB) http.Handler {
 	mux.HandleFunc("/.well-known/webfinger", app.webfinger)
 	mux.HandleFunc("/ap/users/", app.actor)
 	mux.HandleFunc("/manifest.webmanifest", app.manifest)
-	return app.withRequestLogging(mux)
+	return app.withRequestLogging(securityHeaders(mux))
 }
 
 func NewAppForJobs(cfg Config, db *store.DB) *App {
 	app := &App{
 		cfg:            cfg,
 		db:             db,
-		templates:      template.Must(template.ParseGlob("web/templates/*.html")),
+		templates:      parseTemplates(),
 		operatorEmails: make(map[string]struct{}),
 		limiter:        &rateLimiter{buckets: make(map[string]rateBucket)},
 	}

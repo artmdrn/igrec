@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"igrec.net/igrec/internal/app"
@@ -107,8 +110,26 @@ func main() {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	log.Printf("igrec listening on %s", cfg.Addr)
-	log.Fatal(srv.ListenAndServe())
+	errs := make(chan error, 1)
+	go func() {
+		log.Printf("igrec listening on %s", cfg.Addr)
+		errs <- srv.ListenAndServe()
+	}()
+
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+
+	select {
+	case err := <-errs:
+		log.Fatal(err)
+	case sig := <-stop:
+		log.Printf("received %s, shutting down", sig)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(ctx); err != nil {
+			log.Printf("shutdown error: %v", err)
+		}
+	}
 }
 
 func env(key, fallback string) string {

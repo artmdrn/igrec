@@ -5,13 +5,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#111111">
-  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png?v=20260521-french">
-  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v=20260521-french">
-  <link rel="manifest" href="/manifest.webmanifest?v=20260521-french">
-  <link rel="stylesheet" href="/static/igrec.css?v=20260610-settings">
-  <script src="/static/pwa.js?v=20260608" defer></script>
-  <script src="/static/passkeys.js?v=20260521" defer></script>
-  <script src="/static/share.js?v=20260601" defer></script>
+  <link rel="icon" type="image/png" sizes="32x32" href="{{asset "favicon-32.png"}}">
+  <link rel="apple-touch-icon" href="{{asset "apple-touch-icon.png"}}">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="{{asset "igrec.css"}}">
+  <script src="{{asset "pwa.js"}}" defer></script>
+  <script src="{{asset "passkeys.js"}}" defer></script>
+  <script src="{{asset "share.js"}}" defer></script>
   <title>{{if .PageTitle}}{{.PageTitle}}{{else}}igrec{{end}}</title>
   {{if .RefreshURL}}<meta http-equiv="refresh" content="{{if .RefreshSeconds}}{{.RefreshSeconds}}{{else}}6{{end}}; url={{.RefreshURL}}">{{end}}
   {{if .OGURL}}<link rel="canonical" href="{{.OGURL}}">{{end}}
@@ -37,7 +37,7 @@
 </head>
 <body>
   <header class="mast">
-    <a class="logo" href="/"><img src="/static/favicon-32.png?v=20260521-french" alt=""> igrec</a>
+    <a class="logo" href="/"><img src="{{asset "favicon-32.png"}}" alt=""> igrec</a>
     <nav>
       <a href="/" {{if eq .FeedTitle "public"}}aria-current="page"{{end}}>feed</a>
       <a href="/today" {{if eq .FeedTitle "today"}}aria-current="page"{{end}}>today</a>

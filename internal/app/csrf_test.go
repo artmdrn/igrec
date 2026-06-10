@@ -1,7 +1,6 @@
 package app
 
 import (
-	"html/template"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -26,15 +25,10 @@ func testApp(t *testing.T) *App {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
-	tmpl, err := template.ParseGlob("../../web/templates/*.html")
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	return &App{
 		cfg:            Config{BaseURL: "http://localhost:8080"},
 		db:             db,
-		templates:      tmpl,
+		templates:      parseTemplates(),
 		operatorEmails: map[string]struct{}{},
 	}
 }

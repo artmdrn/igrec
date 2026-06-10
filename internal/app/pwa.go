@@ -1,6 +1,10 @@
 package app
 
-import "net/http"
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+)
 
 func (a *App) manifest(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, "application/manifest+json; charset=utf-8", map[string]any{
@@ -21,8 +25,8 @@ func (a *App) manifest(w http.ResponseWriter, r *http.Request) {
 			map[string]string{"name": "feed", "short_name": "feed", "url": "/"},
 		},
 		"icons": []any{
-			map[string]string{"src": "/static/icon-192.png?v=20260521-french", "sizes": "192x192", "type": "image/png"},
-			map[string]string{"src": "/static/icon-512.png?v=20260521-french", "sizes": "512x512", "type": "image/png"},
+			map[string]string{"src": assetPath("icon-192.png"), "sizes": "192x192", "type": "image/png"},
+			map[string]string{"src": assetPath("icon-512.png"), "sizes": "512x512", "type": "image/png"},
 		},
 	})
 }
@@ -38,23 +42,30 @@ func (a *App) serviceWorker(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodHead {
 		return
 	}
-	const source = `"use strict";
+	precache := []string{
+		"/",
+		"/today",
+		"/write",
+		"/manifest.webmanifest",
+		assetPath("igrec.css"),
+		assetPath("pwa.js"),
+		assetPath("share.js"),
+		assetPath("passkeys.js"),
+		assetPath("compose.js"),
+		assetPath("favicon-32.png"),
+		assetPath("apple-touch-icon.png"),
+		assetPath("icon-192.png"),
+		assetPath("icon-512.png"),
+	}
+	precacheJSON, err := json.Marshal(precache)
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	source := fmt.Sprintf(`"use strict";
 
-const CACHE = "igrec-shell-v1";
-const PRECACHE = [
-  "/",
-  "/today",
-  "/write",
-  "/manifest.webmanifest",
-  "/static/igrec.css?v=20260603-badge",
-  "/static/pwa.js?v=20260608",
-  "/static/share.js?v=20260601",
-  "/static/passkeys.js?v=20260521",
-  "/static/favicon-32.png?v=20260521-french",
-  "/static/apple-touch-icon.png?v=20260521-french",
-  "/static/icon-192.png?v=20260521-french",
-  "/static/icon-512.png?v=20260521-french"
-];
+const CACHE = "igrec-shell-%s";
+const PRECACHE = %s;
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(PRECACHE)));
@@ -97,6 +108,6 @@ self.addEventListener("fetch", (event) => {
       return response;
     })),
   );
-});`
+});`, assetsVersion, precacheJSON)
 	_, _ = w.Write([]byte(source))
 }

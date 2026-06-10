@@ -52,8 +52,9 @@ func TestServiceWorkerServesRootScopedWorker(t *testing.T) {
 		t.Fatalf("expected root scope header, got %q", allowed)
 	}
 	for _, needle := range []string{
-		`const CACHE = "igrec-shell-v1";`,
+		`const CACHE = "igrec-shell-` + assetsVersion + `";`,
 		`"/write",`,
+		assetPath("igrec.css"),
 		`self.addEventListener("fetch", (event) => {`,
 	} {
 		if !strings.Contains(body, needle) {
@@ -72,7 +73,7 @@ func TestLayoutRegistersPWAScript(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
 	}
-	if !strings.Contains(w.Body.String(), `/static/pwa.js?v=20260608`) {
+	if !strings.Contains(w.Body.String(), assetPath("pwa.js")) {
 		t.Fatalf("expected layout to include pwa registration script, got %s", w.Body.String())
 	}
 }
