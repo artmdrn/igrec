@@ -1,30 +1,70 @@
 {{template "head" .}}
 <main class="settings">
-  <form method="post" action="/settings">
+  <form method="post" action="/settings" class="settings-form">
     {{if .Error}}<p class="error system-message">{{.Error}}</p>{{end}}
     {{if .Notice}}<p class="system-message">{{.Notice}}</p>{{end}}
     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-    <label>email <input type="email" name="email" value="{{.User.Email}}" autocomplete="email"></label>
-    <label><input type="checkbox" name="daily" {{if .User.EmailOptIn}}checked{{end}}> daily word</label>
-    <label>fediverse <input name="fediverse" value="{{.User.FediverseAcct}}" placeholder="@you@example.social"></label>
-    <label>rel=me links <textarea name="rel_me" rows="4" placeholder="https://example.com/@you&#10;https://github.com/you">{{.RelMeText}}</textarea></label>
-    <label>timestamps
-      <select name="timestamp_preference">
-        <option value="date" {{if eq .User.TimestampPreference "date"}}selected{{end}}>date</option>
-        <option value="datetime" {{if eq .User.TimestampPreference "datetime"}}selected{{end}}>date + time</option>
-        <option value="smart" {{if eq .User.TimestampPreference "smart"}}selected{{end}}>time if same day repeats</option>
-      </select>
-    </label>
-    <button type="submit">save</button>
-    <p class="system-message" data-passkey-status>{{.PasskeyCount}} passkeys</p>
-    <button type="button" data-passkey="register">add passkey</button>
-    <p class="system-message">{{.InviteRemaining}} invites left</p>
-    {{range .Invites}}
-      <p class="invite-line">{{if .Used}}used {{end}}<a href="{{.Link}}">{{.Link}}</a></p>
+
+    <header class="settings-head">
+      <p class="settings-kicker">settings</p>
+      <h1>@{{.User.Username}}</h1>
+      <a href="/@{{.User.Username}}">@{{.User.Username}}@igrec.net</a>
+    </header>
+
+    <section class="settings-section">
+      <h2>account</h2>
+      <div class="settings-grid">
+        <label>email <input type="email" name="email" value="{{.User.Email}}" autocomplete="email"></label>
+        <label>fediverse <input name="fediverse" value="{{.User.FediverseAcct}}" placeholder="@you@example.social"></label>
+      </div>
+      <label>rel=me links <textarea name="rel_me" rows="4" placeholder="https://example.com/@you&#10;https://github.com/you">{{.RelMeText}}</textarea></label>
+      <p class="muted">Email is for login and daily words. rel=me links appear on your public profile.</p>
+    </section>
+
+    <section class="settings-section">
+      <h2>posting</h2>
+      <label class="check-row"><input type="checkbox" name="daily" {{if .User.EmailOptIn}}checked{{end}}> daily word email</label>
+      <label>timestamps
+        <select name="timestamp_preference">
+          <option value="date" {{if eq .User.TimestampPreference "date"}}selected{{end}}>date</option>
+          <option value="datetime" {{if eq .User.TimestampPreference "datetime"}}selected{{end}}>date + time</option>
+          <option value="smart" {{if eq .User.TimestampPreference "smart"}}selected{{end}}>time if same day repeats</option>
+        </select>
+      </label>
+      <button type="submit">save account settings</button>
+    </section>
+
+    <section class="settings-section">
+      <h2>security</h2>
+      <p class="system-message" data-passkey-status>{{.PasskeyCount}} passkeys</p>
+      <button type="button" data-passkey="register">add passkey</button>
+      <a class="button" href="/logout">logout</a>
+    </section>
+
+    <section class="settings-section">
+      <h2>invites</h2>
+      <p class="system-message">{{.InviteRemaining}} invites left</p>
+      {{range .Invites}}
+        <p class="invite-line">{{if .Used}}used {{end}}<a href="{{.Link}}">{{.Link}}</a></p>
+      {{else}}
+        <p class="muted">no invite links made yet.</p>
+      {{end}}
+      {{if gt .InviteRemaining 0}}
+        <button type="submit" name="action" value="invite">make invite</button>
+      {{end}}
+    </section>
+
+    {{if .Friends}}
+      <section class="settings-section">
+        <h2>friends</h2>
+        <div class="settings-links">
+          {{range .Friends}}
+            <a href="/@{{.Username}}">@{{.Username}}</a>
+          {{end}}
+        </div>
+      </section>
     {{end}}
-    {{if gt .InviteRemaining 0}}
-      <button type="submit" name="action" value="invite">make invite</button>
-    {{end}}
+
     <section class="settings-section">
       <h2>api</h2>
       {{if .NewAPIToken}}
@@ -36,22 +76,19 @@ curl -X POST -H "Authorization: Bearer {{.NewAPIToken}}" -d "word=moment" https:
       <label>token name <input name="api_token_name" placeholder="cli"></label>
       <button type="submit" name="action" value="api-token">make api token</button>
       {{range .APITokens}}
-        <p class="invite-line">{{.Name}} · {{.Prefix}}… · {{if .LastUsedAt.Valid}}used{{else}}unused{{end}}</p>
-        <button type="submit" name="delete_api_token_id" value="{{.ID}}">revoke</button>
+        <div class="token-row">
+          <p class="invite-line">{{.Name}} · {{.Prefix}}... · {{if .LastUsedAt.Valid}}used{{else}}unused{{end}}</p>
+          <button type="submit" name="delete_api_token_id" value="{{.ID}}">revoke</button>
+        </div>
+      {{else}}
+        <p class="muted">no api tokens yet.</p>
       {{end}}
     </section>
-    {{if .Friends}}
-      <section class="settings-section">
-        <h2>friends</h2>
-        {{range .Friends}}
-          <a href="/@{{.Username}}">@{{.Username}}</a>
-        {{end}}
-      </section>
-    {{end}}
+
     <section class="settings-section">
-      <h2>badge</h2>
+      <h2>sharing</h2>
       <img class="settings-badge-preview" src="/@{{.User.Username}}/badge.svg" alt="@{{.User.Username}} badge">
-      <p class="muted">latest word for readmes, blogs, signatures, small strange places.</p>
+      <p class="muted">Latest word for readmes, blogs, signatures, small strange places.</p>
       <p class="system-message">markdown</p>
       <pre class="api-example">{{.BadgeMarkdown}}</pre>
       <p class="system-message">html</p>
@@ -59,9 +96,10 @@ curl -X POST -H "Authorization: Bearer {{.NewAPIToken}}" -d "word=moment" https:
       <p class="system-message">url</p>
       <pre class="api-example">{{.BadgeURL}}</pre>
     </section>
+
     <section class="settings-section">
-      <h2>wallet</h2>
-      <p class="muted">pocket card with your latest word, recent friends, and a QR jump to write.</p>
+      <h2>pocket</h2>
+      <p class="muted">Pocket card with your latest word, recent friends, and a QR jump to write.</p>
       {{if .AppleWalletReady}}
         <a class="button" href="{{.AppleWalletURL}}">add to apple wallet</a>
       {{else}}
@@ -73,22 +111,24 @@ APPLE_PASS_KEY_PATH=
 APPLE_WWDR_CERT_PATH=</pre>
       {{end}}
       <p class="system-message">android wallet</p>
-      <p class="muted">planned after Google Wallet issuer setup. For now, the PWA stays the Android shortcut.</p>
+      <p class="muted">Planned after Google Wallet issuer setup. For now, the PWA stays the Android shortcut.</p>
     </section>
+
+    <section class="settings-section">
+      <h2>data</h2>
+      <a class="button" href="/settings/export">export all data</a>
+    </section>
+
     {{if .IsOperator}}
       <section class="settings-section pulse">
-        <h2>pulse</h2>
+        <h2>operator</h2>
         <p>{{.OperatorPulse.UserCount}} users · {{.OperatorPulse.PostCount}} words · {{.OperatorPulse.PostsToday}} today</p>
         <p>{{.OperatorPulse.DailyEmailSubscribers}} daily emails due · {{.OperatorPulse.PendingDeliveries}} fediverse queued · {{.OperatorPulse.DueDeliveries}} due now</p>
-      </section>
-      <section class="settings-section">
-        <h2>storage</h2>
         <p class="muted">{{.UploadStorage.FileCount}} images · {{.UploadStorage.FormattedBytes}} total · {{.UploadStorage.FormattedAverage}} average</p>
         <p class="system-message">{{.UploadStorage.WatchMessage}}</p>
       </section>
     {{end}}
-    <a class="button" href="/logout">logout</a>
-    <a class="button" href="/settings/export">export</a>
+
     <section class="settings-section danger-zone">
       <h2>delete account</h2>
       <p class="muted">type <strong>{{.User.Username}}</strong> to permanently delete your account, words, invites, follows, and sessions.</p>

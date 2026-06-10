@@ -329,18 +329,82 @@ h1 {
   margin-top: clamp(1rem, 5vh, 4rem);
 }
 
+.settings-form {
+  max-width: 860px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.settings-head {
+  display: grid;
+  gap: .2rem;
+  padding-bottom: 1rem;
+  border-bottom: 3px solid var(--ink);
+}
+
+.settings-head h1 {
+  font-size: clamp(2.7rem, 14vw, 8rem);
+}
+
+.settings-head a {
+  overflow-wrap: anywhere;
+  color: var(--blue);
+  text-transform: uppercase;
+}
+
+.settings-kicker {
+  margin: 0;
+  color: var(--red);
+  text-transform: uppercase;
+}
+
 .settings-section {
   display: grid;
-  gap: .45rem;
-  padding: .8rem 0;
+  gap: .75rem;
+  padding: 1rem 0;
   border-top: 2px solid var(--ink);
-  border-bottom: 2px solid var(--ink);
 }
 
 .settings-section h2 {
   margin: 0;
+  padding-bottom: .2rem;
+  border-bottom: 2px solid var(--ink);
+  color: var(--blue);
   font-size: .9rem;
   text-transform: uppercase;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  gap: .75rem;
+}
+
+.settings-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .45rem;
+}
+
+.settings-links a {
+  padding: .25rem .45rem;
+  border: 2px solid var(--ink);
+  background: #fffef7;
+}
+
+.token-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(8rem, 12rem);
+  gap: .55rem;
+  align-items: center;
+  border-top: 1px solid rgba(17,17,17,.35);
+  padding-top: .55rem;
+}
+
+.token-row button {
+  min-height: 2.6rem;
+  padding: .45rem;
+  background: var(--red);
 }
 
 .write .compose {
@@ -543,6 +607,24 @@ label input[type="checkbox"] {
   width: auto;
 }
 
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+}
+
+textarea {
+  width: 100%;
+  min-height: 7rem;
+  resize: vertical;
+  border: 3px solid var(--ink);
+  border-radius: 0;
+  background: #fffef7;
+  color: var(--ink);
+  font: inherit;
+  padding: .8rem;
+}
+
 .handle-input {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -564,6 +646,18 @@ label input[type="checkbox"] {
 }
 
 .danger {
+  background: var(--red);
+}
+
+.danger-zone {
+  border-top-color: var(--red);
+}
+
+.danger-zone h2 {
+  color: var(--red);
+}
+
+.danger-zone button {
   background: var(--red);
 }
 
