@@ -33,6 +33,14 @@ func main() {
 		),
 		VAPIDPublic:  os.Getenv("VAPID_PUBLIC_KEY"),
 		VAPIDPrivate: os.Getenv("VAPID_PRIVATE_KEY"),
+		ApplePass: app.ApplePassConfig{
+			PassTypeID:  os.Getenv("APPLE_PASS_TYPE_ID"),
+			TeamID:      os.Getenv("APPLE_TEAM_ID"),
+			CertPath:    os.Getenv("APPLE_PASS_CERT_PATH"),
+			KeyPath:     os.Getenv("APPLE_PASS_KEY_PATH"),
+			KeyPassword: os.Getenv("APPLE_PASS_KEY_PASSWORD"),
+			WWDRPath:    os.Getenv("APPLE_WWDR_CERT_PATH"),
+		},
 	}
 	if err := cfg.Validate(); err != nil {
 		log.Fatal(err)

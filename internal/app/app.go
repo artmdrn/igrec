@@ -61,6 +61,16 @@ type Config struct {
 	DailyEmailFrom string
 	VAPIDPublic    string
 	VAPIDPrivate   string
+	ApplePass      ApplePassConfig
+}
+
+type ApplePassConfig struct {
+	PassTypeID  string
+	TeamID      string
+	CertPath    string
+	KeyPath     string
+	KeyPassword string
+	WWDRPath    string
 }
 
 type App struct {
@@ -192,6 +202,7 @@ func New(cfg Config, db *store.DB) http.Handler {
 	mux.HandleFunc("/write", app.write)
 	mux.HandleFunc("/settings", app.settings)
 	mux.HandleFunc("/settings/export", app.export)
+	mux.HandleFunc("/wallet/apple.pkpass", app.appleWalletPass)
 	mux.HandleFunc("/operator/invites", app.operatorInvites)
 	mux.HandleFunc("/admin/invites", app.adminInvites)
 	mux.HandleFunc("/inbound/email", app.inboundEmail)
@@ -2152,6 +2163,8 @@ func (a *App) settingsData(user store.User, extra map[string]any) map[string]any
 	data["BadgeURL"] = badgeURL
 	data["BadgeMarkdown"] = "[![" + user.Username + " on igrec](" + badgeURL + ")](" + profileURL + ")"
 	data["BadgeHTML"] = `<a href="` + profileURL + `"><img src="` + badgeURL + `" alt="@` + template.HTMLEscapeString(user.Username) + ` on igrec"></a>`
+	data["AppleWalletReady"] = a.appleWalletConfigured()
+	data["AppleWalletURL"] = "/wallet/apple.pkpass"
 	count, _ := a.db.PasskeyCount(user.ID)
 	data["PasskeyCount"] = count
 	if relMeLinks, err := a.db.RelMeLinksByUser(user.ID); err == nil {

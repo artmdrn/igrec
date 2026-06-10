@@ -42,6 +42,23 @@ Public archives are available as JSON at `/api/@username/words`. The endpoint do
 
 Logged-in users can download a one-click JSON export from `/settings/export`. It includes profile metadata, words, and an ActivityPub-flavored actor/outbox snapshot.
 
+## Wallet cards
+
+Logged-in users see a Wallet section in `/settings`. Apple Wallet support generates a signed `.pkpass` snapshot with the user's latest word, recent friends' words, and a QR link back to `/write?source=wallet`.
+
+Apple Wallet is disabled until pass-signing credentials are configured:
+
+```sh
+APPLE_PASS_TYPE_ID=
+APPLE_TEAM_ID=
+APPLE_PASS_CERT_PATH=
+APPLE_PASS_KEY_PATH=
+APPLE_PASS_KEY_PASSWORD= # optional
+APPLE_WWDR_CERT_PATH=
+```
+
+The server uses `openssl smime` to sign `manifest.json`, so `openssl` must be available on the host. Android Wallet needs Google Wallet issuer setup; until then, the installable PWA is the Android pocket card.
+
 ## Implemented foundation
 
 - Health check at `/healthz`

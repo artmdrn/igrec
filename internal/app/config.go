@@ -51,7 +51,36 @@ func (c Config) Validate() error {
 	if err := validateVAPIDKeys(c.VAPIDPublic, c.VAPIDPrivate); err != nil {
 		return err
 	}
+	if err := validateApplePassConfig(c.ApplePass); err != nil {
+		return err
+	}
 
+	return nil
+}
+
+func validateApplePassConfig(cfg ApplePassConfig) error {
+	values := []string{
+		strings.TrimSpace(cfg.PassTypeID),
+		strings.TrimSpace(cfg.TeamID),
+		strings.TrimSpace(cfg.CertPath),
+		strings.TrimSpace(cfg.KeyPath),
+		strings.TrimSpace(cfg.WWDRPath),
+	}
+	anySet := false
+	for _, value := range values {
+		if value != "" {
+			anySet = true
+			break
+		}
+	}
+	if !anySet {
+		return nil
+	}
+	for _, value := range values {
+		if value == "" {
+			return errors.New("APPLE_PASS_TYPE_ID, APPLE_TEAM_ID, APPLE_PASS_CERT_PATH, APPLE_PASS_KEY_PATH, and APPLE_WWDR_CERT_PATH must all be set together")
+		}
+	}
 	return nil
 }
 

@@ -55,6 +55,44 @@ func TestConfigValidateAllowsProductionWithRequiredFields(t *testing.T) {
 	}
 }
 
+func TestConfigValidateRejectsPartialApplePassConfig(t *testing.T) {
+	cfg := Config{
+		BaseURL:        "http://localhost:8080",
+		Addr:           ":8080",
+		DatabaseURL:    "sqlite://igrec.db",
+		UploadDir:      "data/uploads",
+		LoginEmailFrom: "Y <!@igrec.net>",
+		DailyEmailFrom: "Y <_@igrec.net>",
+		ApplePass:      ApplePassConfig{PassTypeID: "pass.net.igrec"},
+	}
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestConfigValidateAllowsCompleteApplePassConfig(t *testing.T) {
+	cfg := Config{
+		BaseURL:        "http://localhost:8080",
+		Addr:           ":8080",
+		DatabaseURL:    "sqlite://igrec.db",
+		UploadDir:      "data/uploads",
+		LoginEmailFrom: "Y <!@igrec.net>",
+		DailyEmailFrom: "Y <_@igrec.net>",
+		ApplePass: ApplePassConfig{
+			PassTypeID: "pass.net.igrec",
+			TeamID:     "TEAMID",
+			CertPath:   "/cert.pem",
+			KeyPath:    "/key.pem",
+			WWDRPath:   "/wwdr.pem",
+		},
+	}
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("expected config to validate, got %v", err)
+	}
+}
+
 func TestConfigValidateRejectsPartialVAPIDPair(t *testing.T) {
 	cfg := Config{
 		BaseURL:        "http://localhost:8080",

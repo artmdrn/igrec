@@ -59,6 +59,22 @@ curl -X POST -H "Authorization: Bearer {{.NewAPIToken}}" -d "word=moment" https:
       <p class="system-message">url</p>
       <pre class="api-example">{{.BadgeURL}}</pre>
     </section>
+    <section class="settings-section">
+      <h2>wallet</h2>
+      <p class="muted">pocket card with your latest word, recent friends, and a QR jump to write.</p>
+      {{if .AppleWalletReady}}
+        <a class="button" href="{{.AppleWalletURL}}">add to apple wallet</a>
+      {{else}}
+        <p class="system-message">apple wallet needs pass signing certs</p>
+        <pre class="api-example">APPLE_PASS_TYPE_ID=
+APPLE_TEAM_ID=
+APPLE_PASS_CERT_PATH=
+APPLE_PASS_KEY_PATH=
+APPLE_WWDR_CERT_PATH=</pre>
+      {{end}}
+      <p class="system-message">android wallet</p>
+      <p class="muted">planned after Google Wallet issuer setup. For now, the PWA stays the Android shortcut.</p>
+    </section>
     {{if .IsOperator}}
       <section class="settings-section pulse">
         <h2>pulse</h2>
