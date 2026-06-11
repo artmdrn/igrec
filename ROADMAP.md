@@ -98,7 +98,7 @@ Done when:
 
 - [x] Add service worker and install metadata.
 - Add VAPID key validation.
-- Add push subscription storage.
+- [x] Add push subscription storage.
 - Send Web Push notifications for daily prompt and relevant account events.
 - Make notification taps open `/write` with the input focused.
 

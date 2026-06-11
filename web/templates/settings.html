@@ -35,6 +35,24 @@
     </section>
 
     <section class="settings-section">
+      <h2>notifications</h2>
+      {{if .VAPIDPublic}}
+        <p class="system-message" data-push-count>{{.PushSubscriptionCount}} devices ready</p>
+        <button
+          type="button"
+          data-push-toggle
+          data-push-vapid="{{.VAPIDPublic}}"
+          data-push-csrf="{{.CSRFToken}}"
+        >enable browser notifications</button>
+        <p class="muted" data-push-status>Store this browser so push delivery can be wired in next.</p>
+      {{else}}
+        <p class="system-message">push notifications need VAPID keys</p>
+        <pre class="api-example">VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=</pre>
+      {{end}}
+    </section>
+
+    <section class="settings-section">
       <h2>security</h2>
       <p class="system-message" data-passkey-status>{{.PasskeyCount}} passkeys</p>
       <button type="button" data-passkey="register">add passkey</button>

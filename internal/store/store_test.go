@@ -76,6 +76,9 @@ func TestDeleteUserRemovesDependentRecords(t *testing.T) {
 	if err := db.CreateAPIToken(user.ID, "api-hash", "api-prefix", "cli"); err != nil {
 		t.Fatal(err)
 	}
+	if err := db.UpsertPushSubscription(user.ID, "https://push.example/sub-a", "p256dh-a", "auth-a"); err != nil {
+		t.Fatal(err)
+	}
 	if err := db.ReplaceRelMeLinks(user.ID, []string{"https://example.com/@delete_me"}); err != nil {
 		t.Fatal(err)
 	}
@@ -95,6 +98,9 @@ func TestDeleteUserRemovesDependentRecords(t *testing.T) {
 	}
 	if follows, err := db.UserFriends(friend.ID); err != nil || len(follows) != 0 {
 		t.Fatalf("expected no remaining friend edges, got %d err=%v", len(follows), err)
+	}
+	if subscriptions, err := db.PushSubscriptionsByUser(user.ID); err != nil || len(subscriptions) != 0 {
+		t.Fatalf("expected no remaining push subscriptions, got %d err=%v", len(subscriptions), err)
 	}
 	if posts, err := db.Firehose(10); err != nil || len(posts) != 0 {
 		t.Fatalf("expected no remaining posts, got %d err=%v", len(posts), err)
@@ -143,6 +149,50 @@ func TestAPITokenLifecycle(t *testing.T) {
 	}
 	if len(tokens) != 0 {
 		t.Fatalf("expected token deleted, got %#v", tokens)
+	}
+}
+
+func TestPushSubscriptionLifecycle(t *testing.T) {
+	db := testDB(t)
+	first, err := db.CreateUser("pushone", "pushone@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := db.CreateUser("pushtwo", "pushtwo@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.UpsertPushSubscription(first.ID, "https://push.example/sub", "p256dh-a", "auth-a"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.UpsertPushSubscription(first.ID, "https://push.example/sub-2", "p256dh-b", "auth-b"); err != nil {
+		t.Fatal(err)
+	}
+	if count, err := db.PushSubscriptionCountByUser(first.ID); err != nil || count != 2 {
+		t.Fatalf("expected 2 subscriptions, got %d err=%v", count, err)
+	}
+	if err := db.UpsertPushSubscription(second.ID, "https://push.example/sub", "p256dh-next", "auth-next"); err != nil {
+		t.Fatal(err)
+	}
+	firstSubscriptions, err := db.PushSubscriptionsByUser(first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(firstSubscriptions) != 1 || firstSubscriptions[0].Endpoint != "https://push.example/sub-2" {
+		t.Fatalf("expected one remaining subscription for first user, got %#v", firstSubscriptions)
+	}
+	secondSubscriptions, err := db.PushSubscriptionsByUser(second.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(secondSubscriptions) != 1 || secondSubscriptions[0].P256DH != "p256dh-next" || secondSubscriptions[0].Auth != "auth-next" {
+		t.Fatalf("expected moved subscription for second user, got %#v", secondSubscriptions)
+	}
+	if err := db.DeletePushSubscription(second.ID, "https://push.example/sub"); err != nil {
+		t.Fatal(err)
+	}
+	if count, err := db.PushSubscriptionCountByUser(second.ID); err != nil || count != 0 {
+		t.Fatalf("expected 0 subscriptions after delete, got %d err=%v", count, err)
 	}
 }
 

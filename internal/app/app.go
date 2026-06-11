@@ -199,6 +199,8 @@ func New(cfg Config, db *store.DB) http.Handler {
 	mux.HandleFunc("/auth/passkeys/register", app.passkeyRegister)
 	mux.HandleFunc("/auth/passkeys/login/options", app.passkeyLoginOptions)
 	mux.HandleFunc("/auth/passkeys/login", app.passkeyLogin)
+	mux.HandleFunc("/push/subscribe", app.pushSubscribe)
+	mux.HandleFunc("/push/unsubscribe", app.pushUnsubscribe)
 	mux.HandleFunc("/write", app.write)
 	mux.HandleFunc("/settings", app.settings)
 	mux.HandleFunc("/settings/export", app.export)
@@ -379,6 +381,70 @@ func (a *App) apiUser(r *http.Request) (store.User, bool) {
 	}
 	user, err := a.db.UserByAPITokenHash(hashToken(token))
 	return user, err == nil
+}
+
+func (a *App) pushSubscribe(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	user, ok := a.currentUser(r)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if !a.validCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if !a.allowRate("push-subscribe:user:"+strconv.FormatInt(user.ID, 10), 30, time.Hour) || !a.allowRate("push-subscribe:ip:"+clientKey(r), 60, time.Hour) {
+		http.Error(w, "rate limited", http.StatusTooManyRequests)
+		return
+	}
+	endpoint := strings.TrimSpace(r.FormValue("endpoint"))
+	p256dh := strings.TrimSpace(r.FormValue("p256dh"))
+	auth := strings.TrimSpace(r.FormValue("auth"))
+	if err := validatePushSubscription(endpoint, p256dh, auth); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := a.db.UpsertPushSubscription(user.ID, endpoint, p256dh, auth); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	count, _ := a.db.PushSubscriptionCountByUser(user.ID)
+	writeJSON(w, "application/json; charset=utf-8", map[string]any{"ok": true, "subscription_count": count})
+}
+
+func (a *App) pushUnsubscribe(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	user, ok := a.currentUser(r)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if !a.validCSRF(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if !a.allowRate("push-unsubscribe:user:"+strconv.FormatInt(user.ID, 10), 30, time.Hour) || !a.allowRate("push-unsubscribe:ip:"+clientKey(r), 60, time.Hour) {
+		http.Error(w, "rate limited", http.StatusTooManyRequests)
+		return
+	}
+	endpoint := strings.TrimSpace(r.FormValue("endpoint"))
+	if endpoint == "" {
+		http.Error(w, "endpoint is required", http.StatusBadRequest)
+		return
+	}
+	if err := a.db.DeletePushSubscription(user.ID, endpoint); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	count, _ := a.db.PushSubscriptionCountByUser(user.ID)
+	writeJSON(w, "application/json; charset=utf-8", map[string]any{"ok": true, "subscription_count": count})
 }
 
 func (a *App) postPreviewCard(w http.ResponseWriter, r *http.Request) {
@@ -2155,6 +2221,22 @@ func clientKey(r *http.Request) string {
 	return "unknown"
 }
 
+func validatePushSubscription(endpoint, p256dh, auth string) error {
+	if endpoint == "" {
+		return errors.New("endpoint is required")
+	}
+	if len(endpoint) > 2000 {
+		return errors.New("endpoint is too long")
+	}
+	if p256dh == "" || auth == "" {
+		return errors.New("push keys are required")
+	}
+	if len(p256dh) > 512 || len(auth) > 512 {
+		return errors.New("push keys are too long")
+	}
+	return nil
+}
+
 func (a *App) settingsData(user store.User, extra map[string]any) map[string]any {
 	data := map[string]any{"User": user, "VAPIDPublic": a.cfg.VAPIDPublic}
 	profileURL := strings.TrimRight(a.cfg.BaseURL, "/") + "/@" + url.PathEscape(user.Username)
@@ -2196,6 +2278,9 @@ func (a *App) settingsData(user store.User, extra map[string]any) map[string]any
 	}
 	if tokens, err := a.db.APITokensByUser(user.ID); err == nil {
 		data["APITokens"] = tokens
+	}
+	if count, err := a.db.PushSubscriptionCountByUser(user.ID); err == nil {
+		data["PushSubscriptionCount"] = count
 	}
 	if _, ok := a.operatorEmails[strings.ToLower(user.Email)]; ok {
 		data["IsOperator"] = true
