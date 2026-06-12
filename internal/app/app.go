@@ -62,6 +62,8 @@ func New(cfg Config, db *store.DB) http.Handler {
 	mux.HandleFunc("/auth/passkeys/register", app.passkeyRegister)
 	mux.HandleFunc("/auth/passkeys/login/options", app.passkeyLoginOptions)
 	mux.HandleFunc("/auth/passkeys/login", app.passkeyLogin)
+	mux.HandleFunc("/push/subscribe", app.pushSubscribe)
+	mux.HandleFunc("/push/unsubscribe", app.pushUnsubscribe)
 	mux.HandleFunc("/write", app.write)
 	mux.HandleFunc("/settings", app.settings)
 	mux.HandleFunc("/settings/export", app.export)

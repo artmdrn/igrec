@@ -154,12 +154,17 @@ func (a *App) settings(w http.ResponseWriter, r *http.Request) {
 			a.render(w, r, "settings.html", a.withCSRF(w, r, a.settingsData(user, map[string]any{"Error": err.Error()})))
 			return
 		}
+		migrationTarget, err := normalizeMigrationTarget(r.FormValue("migration_target"))
+		if err != nil {
+			a.render(w, r, "settings.html", a.withCSRF(w, r, a.settingsData(user, map[string]any{"Error": err.Error()})))
+			return
+		}
 		relMeLinks, err := normalizeRelMeLinks(r.FormValue("rel_me"))
 		if err != nil {
 			a.render(w, r, "settings.html", a.withCSRF(w, r, a.settingsData(user, map[string]any{"Error": err.Error(), "RelMeText": strings.TrimSpace(r.FormValue("rel_me"))})))
 			return
 		}
-		if err := a.db.UpdateSettingsProfile(user.ID, r.FormValue("timestamp_preference"), r.FormValue("daily") == "on", fediverseAcct, relMeLinks); err != nil {
+		if err := a.db.UpdateSettingsProfile(user.ID, r.FormValue("timestamp_preference"), r.FormValue("daily") == "on", fediverseAcct, migrationTarget, relMeLinks); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -377,6 +382,9 @@ func (a *App) settingsData(user store.User, extra map[string]any) map[string]any
 	if tokens, err := a.db.APITokensByUser(user.ID); err == nil {
 		data["APITokens"] = tokens
 	}
+	if count, err := a.db.PushSubscriptionCountByUser(user.ID); err == nil {
+		data["PushSubscriptionCount"] = count
+	}
 	if _, ok := a.operatorEmails[strings.ToLower(user.Email)]; ok {
 		data["IsOperator"] = true
 		data["UploadStorage"] = a.uploadStorageStats()
@@ -483,6 +491,27 @@ func normalizeFediverseAcct(raw string) (string, error) {
 		}
 	}
 	return "@" + local + "@" + strings.Join(labels, "."), nil
+}
+
+func normalizeMigrationTarget(raw string) (string, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return "", nil
+	}
+	if strings.HasPrefix(value, "https://") || strings.HasPrefix(value, "HTTPS://") {
+		parsed, err := url.Parse(value)
+		if err != nil || !parsed.IsAbs() || !strings.EqualFold(parsed.Scheme, "https") || parsed.Host == "" || parsed.User != nil || parsed.Fragment != "" {
+			return "", errors.New("migration target must be a fediverse handle or full https URL")
+		}
+		parsed.Scheme = "https"
+		parsed.Host = strings.ToLower(parsed.Host)
+		return parsed.String(), nil
+	}
+	value, err := normalizeFediverseAcct(value)
+	if err != nil {
+		return "", errors.New("migration target must be a fediverse handle or full https URL")
+	}
+	return value, nil
 }
 
 func normalizeRelMeLinks(raw string) ([]string, error) {

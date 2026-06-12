@@ -82,6 +82,15 @@ type APIToken struct {
 	LastUsedAt sql.NullTime
 }
 
+type PushSubscription struct {
+	UserID    int64
+	Endpoint  string
+	P256DH    string
+	Auth      string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 type ActivityPubDelivery struct {
 	ID          int64
 	UserID      int64
@@ -240,6 +249,15 @@ create table if not exists api_tokens (
   last_used_at datetime
 );
 create index if not exists api_tokens_user_idx on api_tokens(user_id);
+create table if not exists push_subscriptions (
+  endpoint text primary key,
+  user_id integer not null references users(id),
+  p256dh text not null,
+  auth text not null,
+  created_at datetime not null default current_timestamp,
+  updated_at datetime not null default current_timestamp
+);
+create index if not exists push_subscriptions_user_idx on push_subscriptions(user_id, updated_at desc);
 create table if not exists rel_me_links (
   id integer primary key autoincrement,
   user_id integer not null references users(id),
@@ -658,17 +676,17 @@ func (db *DB) UpdateTimestampPreference(userID int64, preference string) error {
 	return err
 }
 
-func (db *DB) UpdateSettings(userID int64, preference string, emailOptIn bool, fediverseAcct string) error {
+func (db *DB) UpdateSettings(userID int64, preference string, emailOptIn bool, fediverseAcct, migrationTarget string) error {
 	optIn := 0
 	if emailOptIn {
 		optIn = 1
 	}
-	_, err := db.Exec(`update users set timestamp_preference = ?, email_opt_in = ?, fediverse_acct = ? where id = ?`,
-		normalizeTimestampPreference(preference), optIn, strings.TrimSpace(fediverseAcct), userID)
+	_, err := db.Exec(`update users set timestamp_preference = ?, email_opt_in = ?, fediverse_acct = ?, migration_target = ? where id = ?`,
+		normalizeTimestampPreference(preference), optIn, strings.TrimSpace(fediverseAcct), strings.TrimSpace(migrationTarget), userID)
 	return err
 }
 
-func (db *DB) UpdateSettingsProfile(userID int64, preference string, emailOptIn bool, fediverseAcct string, relMeLinks []string) error {
+func (db *DB) UpdateSettingsProfile(userID int64, preference string, emailOptIn bool, fediverseAcct, migrationTarget string, relMeLinks []string) error {
 	tx, err := db.Begin()
 	if err != nil {
 		return err
@@ -679,8 +697,8 @@ func (db *DB) UpdateSettingsProfile(userID int64, preference string, emailOptIn 
 	if emailOptIn {
 		optIn = 1
 	}
-	if _, err := tx.Exec(`update users set timestamp_preference = ?, email_opt_in = ?, fediverse_acct = ? where id = ?`,
-		normalizeTimestampPreference(preference), optIn, strings.TrimSpace(fediverseAcct), userID); err != nil {
+	if _, err := tx.Exec(`update users set timestamp_preference = ?, email_opt_in = ?, fediverse_acct = ?, migration_target = ? where id = ?`,
+		normalizeTimestampPreference(preference), optIn, strings.TrimSpace(fediverseAcct), strings.TrimSpace(migrationTarget), userID); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`delete from rel_me_links where user_id = ?`, userID); err != nil {
@@ -710,6 +728,54 @@ func (db *DB) CreateAPIToken(userID int64, tokenHash, prefix, name string) error
 	}
 	_, err := db.Exec(`insert into api_tokens(user_id, token_hash, token_prefix, name) values(?, ?, ?, ?)`, userID, tokenHash, prefix, name)
 	return err
+}
+
+func (db *DB) UpsertPushSubscription(userID int64, endpoint, p256dh, auth string) error {
+	endpoint = strings.TrimSpace(endpoint)
+	p256dh = strings.TrimSpace(p256dh)
+	auth = strings.TrimSpace(auth)
+	_, err := db.Exec(`
+insert into push_subscriptions(endpoint, user_id, p256dh, auth)
+values(?, ?, ?, ?)
+on conflict(endpoint) do update set
+  user_id = excluded.user_id,
+  p256dh = excluded.p256dh,
+  auth = excluded.auth,
+  updated_at = current_timestamp
+`, endpoint, userID, p256dh, auth)
+	return err
+}
+
+func (db *DB) DeletePushSubscription(userID int64, endpoint string) error {
+	_, err := db.Exec(`delete from push_subscriptions where user_id = ? and endpoint = ?`, userID, strings.TrimSpace(endpoint))
+	return err
+}
+
+func (db *DB) PushSubscriptionsByUser(userID int64) ([]PushSubscription, error) {
+	rows, err := db.Query(`
+select user_id, endpoint, p256dh, auth, created_at, updated_at
+from push_subscriptions
+where user_id = ?
+order by updated_at desc, created_at desc, endpoint asc`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var subscriptions []PushSubscription
+	for rows.Next() {
+		var subscription PushSubscription
+		if err := rows.Scan(&subscription.UserID, &subscription.Endpoint, &subscription.P256DH, &subscription.Auth, &subscription.CreatedAt, &subscription.UpdatedAt); err != nil {
+			return nil, err
+		}
+		subscriptions = append(subscriptions, subscription)
+	}
+	return subscriptions, rows.Err()
+}
+
+func (db *DB) PushSubscriptionCountByUser(userID int64) (int, error) {
+	var count int
+	err := db.QueryRow(`select count(*) from push_subscriptions where user_id = ?`, userID).Scan(&count)
+	return count, err
 }
 
 func (db *DB) ReplaceRelMeLinks(userID int64, links []string) error {
@@ -857,6 +923,7 @@ func (db *DB) DeleteUser(userID int64) error {
 		`delete from activitypub_keys where user_id = ?`,
 		`delete from activitypub_deliveries where user_id = ?`,
 		`delete from api_tokens where user_id = ?`,
+		`delete from push_subscriptions where user_id = ?`,
 		`delete from rel_me_links where user_id = ?`,
 		`delete from user_follows where follower_user_id = ? or followed_user_id = ?`,
 		`delete from daily_email_sends where user_id = ?`,

@@ -1,0 +1,25 @@
+# test log
+getenv GOTMPDIR
+getenv TMPDIR
+open /var/folders/cy/fsc3rf7n0lx11x8kvclnp5s40000gn/T
+getenv GOTMPDIR
+getenv TMPDIR
+open /var/folders/cy/fsc3rf7n0lx11x8kvclnp5s40000gn/T
+getenv GOTMPDIR
+getenv TMPDIR
+open /var/folders/cy/fsc3rf7n0lx11x8kvclnp5s40000gn/T
+getenv GOTMPDIR
+getenv TMPDIR
+open /var/folders/cy/fsc3rf7n0lx11x8kvclnp5s40000gn/T
+getenv GOTMPDIR
+getenv TMPDIR
+open /var/folders/cy/fsc3rf7n0lx11x8kvclnp5s40000gn/T
+getenv GOTMPDIR
+getenv TMPDIR
+open /var/folders/cy/fsc3rf7n0lx11x8kvclnp5s40000gn/T
+getenv GOTMPDIR
+getenv TMPDIR
+open /var/folders/cy/fsc3rf7n0lx11x8kvclnp5s40000gn/T
+getenv GOTMPDIR
+getenv TMPDIR
+open /var/folders/cy/fsc3rf7n0lx11x8kvclnp5s40000gn/T
