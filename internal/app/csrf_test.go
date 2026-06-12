@@ -349,7 +349,7 @@ func TestSettingsRejectsInvalidFediverseHandle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := a.db.UpdateSettings(user.ID, "smart", false, "@existing@example.social"); err != nil {
+	if err := a.db.UpdateSettings(user.ID, "smart", false, "@existing@example.social", ""); err != nil {
 		t.Fatal(err)
 	}
 	sessionToken, sessionHash, err := newToken()
@@ -463,6 +463,170 @@ func TestSettingsPersistsRelMeLinks(t *testing.T) {
 	}
 	if !strings.Contains(string(body), "https://github.com/member\nhttps://social.example/@member") {
 		t.Fatalf("expected saved rel=me links in settings form, got %q", string(body))
+	}
+}
+
+func TestSettingsUpdateMigrationTargetHandle(t *testing.T) {
+	a := testApp(t)
+	user, err := a.db.CreateUser("member", "member@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionToken, sessionHash, err := newToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.CreateSession(sessionHash, user.ID, farFuture()); err != nil {
+		t.Fatal(err)
+	}
+
+	wGet := httptest.NewRecorder()
+	reqGet := httptest.NewRequest(http.MethodGet, "/settings", nil)
+	reqGet.AddCookie(&http.Cookie{Name: sessionCookie, Value: sessionToken})
+	a.settings(wGet, reqGet)
+
+	csrf := cookieByName(wGet.Result(), csrfCookie)
+	if csrf == nil || csrf.Value == "" {
+		t.Fatal("expected csrf cookie from GET /settings")
+	}
+
+	form := url.Values{}
+	form.Set("migration_target", "Next@Mastodon.Example")
+	form.Set(csrfField, csrf.Value)
+	reqPost := httptest.NewRequest(http.MethodPost, "/settings", strings.NewReader(form.Encode()))
+	reqPost.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	reqPost.AddCookie(&http.Cookie{Name: sessionCookie, Value: sessionToken})
+	reqPost.AddCookie(csrf)
+	wPost := httptest.NewRecorder()
+
+	a.settings(wPost, reqPost)
+
+	if wPost.Code != http.StatusSeeOther {
+		t.Fatalf("expected status %d, got %d", http.StatusSeeOther, wPost.Code)
+	}
+	updated, err := a.db.UserByID(user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.MigrationTarget != "@Next@mastodon.example" {
+		t.Fatalf("expected normalized migration target, got %q", updated.MigrationTarget)
+	}
+
+	wSettings := httptest.NewRecorder()
+	reqSettings := httptest.NewRequest(http.MethodGet, "/settings", nil)
+	reqSettings.AddCookie(&http.Cookie{Name: sessionCookie, Value: sessionToken})
+	a.settings(wSettings, reqSettings)
+
+	body, err := io.ReadAll(wSettings.Result().Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), `value="@Next@mastodon.example"`) {
+		t.Fatalf("expected saved migration target in settings form, got %q", string(body))
+	}
+}
+
+func TestSettingsUpdateMigrationTargetURL(t *testing.T) {
+	a := testApp(t)
+	user, err := a.db.CreateUser("member", "member@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionToken, sessionHash, err := newToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.CreateSession(sessionHash, user.ID, farFuture()); err != nil {
+		t.Fatal(err)
+	}
+
+	wGet := httptest.NewRecorder()
+	reqGet := httptest.NewRequest(http.MethodGet, "/settings", nil)
+	reqGet.AddCookie(&http.Cookie{Name: sessionCookie, Value: sessionToken})
+	a.settings(wGet, reqGet)
+
+	csrf := cookieByName(wGet.Result(), csrfCookie)
+	if csrf == nil || csrf.Value == "" {
+		t.Fatal("expected csrf cookie from GET /settings")
+	}
+
+	form := url.Values{}
+	form.Set("migration_target", "https://Mastodon.Example/users/next")
+	form.Set(csrfField, csrf.Value)
+	reqPost := httptest.NewRequest(http.MethodPost, "/settings", strings.NewReader(form.Encode()))
+	reqPost.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	reqPost.AddCookie(&http.Cookie{Name: sessionCookie, Value: sessionToken})
+	reqPost.AddCookie(csrf)
+	wPost := httptest.NewRecorder()
+
+	a.settings(wPost, reqPost)
+
+	if wPost.Code != http.StatusSeeOther {
+		t.Fatalf("expected status %d, got %d", http.StatusSeeOther, wPost.Code)
+	}
+	updated, err := a.db.UserByID(user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.MigrationTarget != "https://mastodon.example/users/next" {
+		t.Fatalf("expected normalized migration target URL, got %q", updated.MigrationTarget)
+	}
+}
+
+func TestSettingsRejectsInvalidMigrationTarget(t *testing.T) {
+	a := testApp(t)
+	user, err := a.db.CreateUser("member", "member@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.UpdateSettings(user.ID, "smart", false, "", "@existing@example.social"); err != nil {
+		t.Fatal(err)
+	}
+	sessionToken, sessionHash, err := newToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.CreateSession(sessionHash, user.ID, farFuture()); err != nil {
+		t.Fatal(err)
+	}
+
+	wGet := httptest.NewRecorder()
+	reqGet := httptest.NewRequest(http.MethodGet, "/settings", nil)
+	reqGet.AddCookie(&http.Cookie{Name: sessionCookie, Value: sessionToken})
+	a.settings(wGet, reqGet)
+
+	csrf := cookieByName(wGet.Result(), csrfCookie)
+	if csrf == nil || csrf.Value == "" {
+		t.Fatal("expected csrf cookie from GET /settings")
+	}
+
+	form := url.Values{}
+	form.Set("migration_target", "not a target")
+	form.Set(csrfField, csrf.Value)
+	reqPost := httptest.NewRequest(http.MethodPost, "/settings", strings.NewReader(form.Encode()))
+	reqPost.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	reqPost.AddCookie(&http.Cookie{Name: sessionCookie, Value: sessionToken})
+	reqPost.AddCookie(csrf)
+	wPost := httptest.NewRecorder()
+
+	a.settings(wPost, reqPost)
+
+	if wPost.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, wPost.Code)
+	}
+	body, err := io.ReadAll(wPost.Result().Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "migration target must be a fediverse handle or full https URL") {
+		t.Fatalf("expected migration target validation error, got %q", string(body))
+	}
+	unchanged, err := a.db.UserByID(user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unchanged.MigrationTarget != "@existing@example.social" {
+		t.Fatalf("expected existing migration target to remain, got %q", unchanged.MigrationTarget)
 	}
 }
 

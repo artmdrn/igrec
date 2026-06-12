@@ -676,17 +676,17 @@ func (db *DB) UpdateTimestampPreference(userID int64, preference string) error {
 	return err
 }
 
-func (db *DB) UpdateSettings(userID int64, preference string, emailOptIn bool, fediverseAcct string) error {
+func (db *DB) UpdateSettings(userID int64, preference string, emailOptIn bool, fediverseAcct, migrationTarget string) error {
 	optIn := 0
 	if emailOptIn {
 		optIn = 1
 	}
-	_, err := db.Exec(`update users set timestamp_preference = ?, email_opt_in = ?, fediverse_acct = ? where id = ?`,
-		normalizeTimestampPreference(preference), optIn, strings.TrimSpace(fediverseAcct), userID)
+	_, err := db.Exec(`update users set timestamp_preference = ?, email_opt_in = ?, fediverse_acct = ?, migration_target = ? where id = ?`,
+		normalizeTimestampPreference(preference), optIn, strings.TrimSpace(fediverseAcct), strings.TrimSpace(migrationTarget), userID)
 	return err
 }
 
-func (db *DB) UpdateSettingsProfile(userID int64, preference string, emailOptIn bool, fediverseAcct string, relMeLinks []string) error {
+func (db *DB) UpdateSettingsProfile(userID int64, preference string, emailOptIn bool, fediverseAcct, migrationTarget string, relMeLinks []string) error {
 	tx, err := db.Begin()
 	if err != nil {
 		return err
@@ -697,8 +697,8 @@ func (db *DB) UpdateSettingsProfile(userID int64, preference string, emailOptIn 
 	if emailOptIn {
 		optIn = 1
 	}
-	if _, err := tx.Exec(`update users set timestamp_preference = ?, email_opt_in = ?, fediverse_acct = ? where id = ?`,
-		normalizeTimestampPreference(preference), optIn, strings.TrimSpace(fediverseAcct), userID); err != nil {
+	if _, err := tx.Exec(`update users set timestamp_preference = ?, email_opt_in = ?, fediverse_acct = ?, migration_target = ? where id = ?`,
+		normalizeTimestampPreference(preference), optIn, strings.TrimSpace(fediverseAcct), strings.TrimSpace(migrationTarget), userID); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`delete from rel_me_links where user_id = ?`, userID); err != nil {

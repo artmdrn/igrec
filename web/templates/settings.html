@@ -17,8 +17,9 @@
         <label>email <input type="email" name="email" value="{{.User.Email}}" autocomplete="email"></label>
         <label>fediverse <input name="fediverse" value="{{.User.FediverseAcct}}" placeholder="@you@example.social"></label>
       </div>
+      <label>migration target <input name="migration_target" value="{{.User.MigrationTarget}}" placeholder="@you@example.social or https://example.social/users/you"></label>
       <label>rel=me links <textarea name="rel_me" rows="4" placeholder="https://example.com/@you&#10;https://github.com/you">{{.RelMeText}}</textarea></label>
-      <p class="muted">Email is for login and daily words. rel=me links appear on your public profile.</p>
+      <p class="muted">Email is for login and daily words. rel=me links appear on your public profile. Migration target is saved for a future account move.</p>
     </section>
 
     <section class="settings-section">
