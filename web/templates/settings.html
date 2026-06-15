@@ -106,6 +106,13 @@ curl -X POST -H "Authorization: Bearer {{.NewAPIToken}}" -d "word=moment" https:
     </section>
 
     <section class="settings-section">
+      <h2>siri</h2>
+      <p class="muted">Download a personalized Shortcuts pack for one-step posting. It uses share sheet text when present, otherwise the clipboard, with no prompt.</p>
+      <button type="submit" formaction="/settings/shortcuts/clipboard-pack" formmethod="post">download shortcuts pack</button>
+      <p class="system-message">voice note: true “post [word] to igrec” Siri commands need a native iPhone app with App Intents. This pack is for clipboard/share-sheet posting.</p>
+    </section>
+
+    <section class="settings-section">
       <h2>sharing</h2>
       <img class="settings-badge-preview" src="/@{{.User.Username}}/badge.svg" alt="@{{.User.Username}} badge">
       <p class="muted">Latest word for readmes, blogs, signatures, small strange places.</p>

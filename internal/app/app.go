@@ -67,6 +67,7 @@ func New(cfg Config, db *store.DB) http.Handler {
 	mux.HandleFunc("/write", app.write)
 	mux.HandleFunc("/settings", app.settings)
 	mux.HandleFunc("/settings/export", app.export)
+	mux.HandleFunc("/settings/shortcuts/clipboard-pack", app.shortcutClipboardPack)
 	mux.HandleFunc("/wallet/apple.pkpass", app.appleWalletPass)
 	mux.HandleFunc("/operator/invites", app.operatorInvites)
 	mux.HandleFunc("/admin/invites", app.adminInvites)
