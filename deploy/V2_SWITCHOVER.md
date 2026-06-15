@@ -10,7 +10,7 @@ so switchover is a binary swap, not a data migration.
 |---|---|---|
 | URL | https://igrec.net | https://v2.igrec.net |
 | service | `igrec.service` | `igrec-v2.service` |
-| bind | 127.0.0.1:8097 | 127.0.0.1:8098 |
+| bind | 127.0.0.1:8097 | 127.0.0.1:8110 |
 | app dir | `/opt/igrec` | `/opt/igrec-v2` |
 | database | `/opt/igrec/data/igrec.db` | `/opt/igrec-v2/data/igrec.db` (snapshot) |
 | daily email timer | `igrec-daily-email.timer` (active) | none on purpose |

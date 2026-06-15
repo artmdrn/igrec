@@ -54,7 +54,7 @@ sudo chmod 755 /opt/igrec-v2/bin/igrec
 if ! sudo test -f /opt/igrec-v2/.env; then
   sudo cp /opt/igrec/.env /opt/igrec-v2/.env
   sudo sed -i 's#^BASE_URL=.*#BASE_URL=https://v2.igrec.net#' /opt/igrec-v2/.env
-  sudo sed -i 's#^ADDR=.*#ADDR=:8098#' /opt/igrec-v2/.env
+  sudo sed -i 's#^ADDR=.*#ADDR=:8110#' /opt/igrec-v2/.env
   sudo sed -i 's#^DATABASE_URL=.*#DATABASE_URL=sqlite:///opt/igrec-v2/data/igrec.db#' /opt/igrec-v2/.env
 fi
 
@@ -83,7 +83,7 @@ sudo nginx -t
 sudo systemctl reload nginx
 
 sleep 1
-echo "--- beta health:" && curl -fsS http://127.0.0.1:8098/healthz
+echo "--- beta health:" && curl -fsS http://127.0.0.1:8110/healthz
 echo "--- production untouched:" && systemctl is-active igrec && curl -fsS http://127.0.0.1:8097/healthz
 REMOTE
 
