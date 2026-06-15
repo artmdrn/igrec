@@ -5,6 +5,7 @@
 *.db-*
 data/
 tmp/
+.tmp/
 dist/
 coverage.out
 .gocache/
