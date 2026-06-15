@@ -4,6 +4,7 @@
   const root = document.querySelector("[data-compose]");
   if (!root) return;
 
+  const wordInput = root.querySelector("[data-word-input]");
   const fileInput = root.querySelector("[data-image-file]");
   const previewWrap = root.querySelector("[data-preview-wrap]");
   const previewImage = root.querySelector("[data-preview-image]");
@@ -11,6 +12,13 @@
   const focusX = root.querySelector("[data-focus-x]");
   const focusY = root.querySelector("[data-focus-y]");
   const focusTarget = root.querySelector("[data-focus-target]");
+
+  if (wordInput && root.getAttribute("data-focus-word-input") === "1") {
+    window.requestAnimationFrame(() => {
+      wordInput.focus();
+      wordInput.select();
+    });
+  }
 
   const setFocus = (x, y) => {
     const safeX = Math.min(1, Math.max(0, x));

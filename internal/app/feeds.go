@@ -188,7 +188,9 @@ func (a *App) write(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		a.render(w, r, "write.html", a.withCSRF(w, r, a.writeData(user, nil)))
+		a.render(w, r, "write.html", a.withCSRF(w, r, a.writeData(user, map[string]any{
+			"FocusWordInput": r.URL.Query().Get("focus") == "1",
+		})))
 	case http.MethodPost:
 		if !a.validCSRF(r) {
 			http.Error(w, "forbidden", http.StatusForbidden)

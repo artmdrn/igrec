@@ -1,6 +1,6 @@
 {{template "head" .}}
 <main class="write">
-  <form method="post" action="/write" enctype="multipart/form-data" class="compose" data-compose>
+  <form method="post" action="/write" enctype="multipart/form-data" class="compose" data-compose data-focus-word-input="{{if .FocusWordInput}}1{{else}}0{{end}}">
     {{if .Error}}<p class="error system-message">{{.Error}}</p>{{end}}
     {{if .TodayPost}}<p class="today-word">today: <a href="{{.TodayPost.URL}}">{{.TodayPost.Word}}</a></p>{{end}}
     {{if .OnThisDay}}

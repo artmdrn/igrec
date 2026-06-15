@@ -66,6 +66,33 @@ func TestWritePostShowsCommittedWordBeforeRedirect(t *testing.T) {
 	}
 }
 
+func TestWritePageMarksFocusRestoreFromNotificationTap(t *testing.T) {
+	a := testApp(t)
+	user, err := a.db.CreateUser("focususer", "focus@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionToken, sessionHash, err := newToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.CreateSession(sessionHash, user.ID, farFuture()); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/write?source=push&focus=1", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookie, Value: sessionToken})
+	w := httptest.NewRecorder()
+	a.write(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+	if !strings.Contains(w.Body.String(), `data-focus-word-input="1"`) {
+		t.Fatalf("expected write page to mark focus restoration, got %s", w.Body.String())
+	}
+}
+
 func TestImageFocusCSSUsesStoredFocus(t *testing.T) {
 	got := string(imageFocusCSS(storePostWithFocus(0.25, 0.75)))
 	if got != "object-position: 25.0% 75.0%;" {

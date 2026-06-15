@@ -66,6 +66,7 @@ func (a *App) serviceWorker(w http.ResponseWriter, r *http.Request) {
 
 const CACHE = "igrec-shell-%s";
 const PRECACHE = %s;
+const NOTIFICATION_URL = "/write?source=push&focus=1";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(PRECACHE)));
@@ -107,6 +108,35 @@ self.addEventListener("fetch", (event) => {
       }
       return response;
     })),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = new URL(
+    event.notification && event.notification.data && event.notification.data.url
+      ? event.notification.data.url
+      : NOTIFICATION_URL,
+    self.location.origin,
+  ).toString();
+
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      const targetURL = new URL(target);
+      for (const client of clients) {
+        const current = new URL(client.url);
+        if (current.origin !== self.location.origin) continue;
+        if (current.pathname !== "/write") continue;
+        if (current.search !== targetURL.search && "navigate" in client) {
+          return client.navigate(target).then((nextClient) => (nextClient || client).focus());
+        }
+        return client.focus();
+      }
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(target);
+      }
+      return undefined;
+    }),
   );
 });`, assetsVersion, precacheJSON)
 	_, _ = w.Write([]byte(source))

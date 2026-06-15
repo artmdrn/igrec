@@ -55,9 +55,12 @@ func TestServiceWorkerServesRootScopedWorker(t *testing.T) {
 	}
 	for _, needle := range []string{
 		`const CACHE = "igrec-shell-` + assetsVersion + `";`,
+		`const NOTIFICATION_URL = "/write?source=push&focus=1";`,
 		`"/write",`,
 		assetPath("igrec.css"),
 		`self.addEventListener("fetch", (event) => {`,
+		`self.addEventListener("notificationclick", (event) => {`,
+		`self.clients.openWindow(target)`,
 	} {
 		if !strings.Contains(body, needle) {
 			t.Fatalf("expected worker to contain %s, got %s", needle, body)
