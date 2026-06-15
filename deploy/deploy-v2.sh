@@ -6,17 +6,38 @@
 # snapshot).
 #
 # Usage: ./deploy/deploy-v2.sh [user@host]
+#
+# SSH identity: set IGREC_SSH_KEY to the private key path, or rely on
+# your default SSH config/agent. BatchMode is forced so a missing key
+# fails fast instead of hanging on a password/host-key prompt.
 set -euo pipefail
 
 HOST="${1:-ubuntu@79.72.31.189}"
 cd "$(dirname "$0")/.."
 
-tar --exclude='.git' --exclude='data' --exclude='*.db' \
-    --exclude='handover' --exclude='.gocache' \
-    -czf /tmp/igrec-v2-deploy.tgz .
-scp /tmp/igrec-v2-deploy.tgz "$HOST:/tmp/igrec-v2-deploy.tgz"
+SSH_OPTS=(-o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15)
+if [ -n "${IGREC_SSH_KEY:-}" ]; then
+  SSH_OPTS+=(-i "$IGREC_SSH_KEY")
+fi
 
-ssh "$HOST" <<'REMOTE'
+# Build the source bundle. Prefer `git archive` of the committed branch:
+# it reads packed objects, not the working tree, which matters when the
+# checkout lives on a slow/synced filesystem (e.g. iCloud Drive). Set
+# IGREC_BUNDLE to reuse a prebuilt tarball, or IGREC_NO_GIT_ARCHIVE=1 to
+# fall back to tarring the working tree.
+BUNDLE="${IGREC_BUNDLE:-/tmp/igrec-v2-deploy.tgz}"
+if [ -z "${IGREC_BUNDLE:-}" ]; then
+  if [ -z "${IGREC_NO_GIT_ARCHIVE:-}" ] && git rev-parse --verify v2 >/dev/null 2>&1; then
+    git archive --format=tar.gz -o "$BUNDLE" v2
+  else
+    tar --exclude='.git' --exclude='data' --exclude='*.db' \
+        --exclude='handover' --exclude='.gocache' --exclude='.tmp' \
+        -czf "$BUNDLE" .
+  fi
+fi
+scp "${SSH_OPTS[@]}" "$BUNDLE" "$HOST:/tmp/igrec-v2-deploy.tgz"
+
+ssh "${SSH_OPTS[@]}" "$HOST" <<'REMOTE'
 set -euo pipefail
 
 sudo mkdir -p /opt/igrec-v2/src /opt/igrec-v2/bin /opt/igrec-v2/data/uploads
