@@ -86,7 +86,7 @@ The server uses `openssl smime` to sign `manifest.json`, so `openssl` must be av
 - IndieAuth and Mastodon OAuth
 - Configure operator accounts with `OPERATOR_EMAILS`
 - Signed ActivityPub delivery to follower inboxes
-- VAPID subscription storage and push delivery
+- Web Push delivery to stored browser subscriptions
 - Settings migration and delete flows
 
 ## Image uploads

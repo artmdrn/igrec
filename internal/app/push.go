@@ -13,6 +13,10 @@ func (a *App) pushSubscribe(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if !a.pushConfigured() {
+		http.Error(w, "push notifications are not configured", http.StatusServiceUnavailable)
+		return
+	}
 	user, ok := a.currentUser(r)
 	if !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -86,4 +90,11 @@ func validatePushSubscription(endpoint, p256dh, auth string) error {
 		return errors.New("push keys are too long")
 	}
 	return nil
+}
+
+func (a *App) pushConfigured() bool {
+	if strings.TrimSpace(a.cfg.VAPIDPublic) == "" || strings.TrimSpace(a.cfg.VAPIDPrivate) == "" {
+		return false
+	}
+	return validateVAPIDKeys(a.cfg.VAPIDPublic, a.cfg.VAPIDPrivate) == nil
 }

@@ -120,6 +120,9 @@ func TestSettingsShowsPushControlsWhenVAPIDConfigured(t *testing.T) {
 
 func TestPushSubscribeAndUnsubscribe(t *testing.T) {
 	a := testApp(t)
+	pair := mustVAPIDPair(t)
+	a.cfg.VAPIDPublic = pair.public
+	a.cfg.VAPIDPrivate = pair.private
 	user, err := a.db.CreateUser("pusher", "pusher@example.com")
 	if err != nil {
 		t.Fatal(err)
@@ -190,5 +193,48 @@ func TestPushSubscribeAndUnsubscribe(t *testing.T) {
 	}
 	if unsubscribePayload.SubscriptionCount != 0 {
 		t.Fatalf("expected 0 stored subscriptions, got %d", unsubscribePayload.SubscriptionCount)
+	}
+}
+
+func TestPushSubscribeRejectsWhenVAPIDNotConfigured(t *testing.T) {
+	a := testApp(t)
+	user, err := a.db.CreateUser("pusher", "pusher@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionToken, sessionHash, err := newToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.CreateSession(sessionHash, user.ID, farFuture()); err != nil {
+		t.Fatal(err)
+	}
+
+	wGet := httptest.NewRecorder()
+	reqGet := httptest.NewRequest(http.MethodGet, "/settings", nil)
+	reqGet.AddCookie(&http.Cookie{Name: sessionCookie, Value: sessionToken})
+	a.settings(wGet, reqGet)
+	csrf := cookieByName(wGet.Result(), csrfCookie)
+	if csrf == nil || csrf.Value == "" {
+		t.Fatal("expected csrf cookie from GET /settings")
+	}
+
+	subscribeForm := url.Values{}
+	subscribeForm.Set(csrfField, csrf.Value)
+	subscribeForm.Set("endpoint", "https://push.example/device")
+	subscribeForm.Set("p256dh", "p256dh-value")
+	subscribeForm.Set("auth", "auth-value")
+	reqSubscribe := httptest.NewRequest(http.MethodPost, "/push/subscribe", strings.NewReader(subscribeForm.Encode()))
+	reqSubscribe.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	reqSubscribe.AddCookie(&http.Cookie{Name: sessionCookie, Value: sessionToken})
+	reqSubscribe.AddCookie(csrf)
+	wSubscribe := httptest.NewRecorder()
+	a.pushSubscribe(wSubscribe, reqSubscribe)
+
+	if wSubscribe.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected subscribe status %d, got %d: %s", http.StatusServiceUnavailable, wSubscribe.Code, wSubscribe.Body.String())
+	}
+	if subscriptions, err := a.db.PushSubscriptionsByUser(user.ID); err != nil || len(subscriptions) != 0 {
+		t.Fatalf("expected no stored subscriptions, got %d err=%v", len(subscriptions), err)
 	}
 }

@@ -97,7 +97,7 @@ Done when:
 ## Phase 6: PWA And Notifications
 
 - [x] Add service worker and install metadata.
-- Add VAPID key validation.
+- [x] Add VAPID key validation.
 - [x] Add push subscription storage.
 - Send Web Push notifications for daily prompt and relevant account events.
 - [x] Make notification taps open `/write` with the input focused.
