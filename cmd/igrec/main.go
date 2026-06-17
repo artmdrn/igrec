@@ -62,11 +62,15 @@ func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "send-daily-email":
-			sent, err := sendDailyEmails(cfg, db)
+			emailSent, err := sendDailyEmails(cfg, db)
 			if err != nil {
 				log.Fatal(err)
 			}
-			log.Printf("daily email sent to %d users", sent)
+			pushUsers, pushDeliveries, err := sendDailyPushes(cfg, db, nil)
+			if err != nil {
+				log.Fatal(err)
+			}
+			log.Printf("daily prompts sent email_users=%d push_users=%d push_deliveries=%d", emailSent, pushUsers, pushDeliveries)
 			return
 		case "daily-email-status":
 			if err := printDailyEmailStatus(db); err != nil {

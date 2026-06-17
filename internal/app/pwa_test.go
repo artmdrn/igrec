@@ -59,6 +59,8 @@ func TestServiceWorkerServesRootScopedWorker(t *testing.T) {
 		`"/write",`,
 		assetPath("igrec.css"),
 		`self.addEventListener("fetch", (event) => {`,
+		`self.addEventListener("push", (event) => {`,
+		`self.registration.showNotification(title, {`,
 		`self.addEventListener("notificationclick", (event) => {`,
 		`self.clients.openWindow(target)`,
 	} {

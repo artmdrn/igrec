@@ -54,6 +54,12 @@ type DailyEmailCandidate struct {
 	SentCount int
 }
 
+type DailyPushCandidate struct {
+	User      User
+	Post      sql.Null[Post]
+	SentCount int
+}
+
 type WebAuthnSession struct {
 	ID        string
 	UserID    sql.NullInt64
@@ -229,6 +235,12 @@ create table if not exists user_follows (
   primary key(follower_user_id, followed_user_id)
 );
 create table if not exists daily_email_sends (
+  user_id integer not null references users(id),
+  sent_on text not null,
+  sent_at datetime not null default current_timestamp,
+  primary key(user_id, sent_on)
+);
+create table if not exists daily_push_sends (
   user_id integer not null references users(id),
   sent_on text not null,
   sent_at datetime not null default current_timestamp,
@@ -1077,8 +1089,97 @@ limit ?`, sentOn, limit)
 	return candidates, rows.Err()
 }
 
+func (db *DB) DailyPushCandidates(sentOn string, limit int) ([]DailyPushCandidate, error) {
+	rows, err := db.Query(`
+select users.id, users.username, users.domain, users.email, users.fediverse_acct, users.email_opt_in, users.timestamp_preference, users.migration_target, users.created_at,
+       posts.id, posts.user_id, post_users.username, posts.word, posts.image_url, posts.image_focus_x, posts.image_focus_y, posts.created_at,
+       (select count(*) from daily_push_sends all_sends where all_sends.user_id = users.id)
+from users
+join (select distinct user_id from push_subscriptions) subscribed_users on subscribed_users.user_id = users.id
+left join daily_push_sends on daily_push_sends.user_id = users.id and daily_push_sends.sent_on = ?
+left join posts on posts.id = (
+  select posts.id
+  from posts
+  where (
+    posts.user_id in (select followed_user_id from user_follows where follower_user_id = users.id)
+    or (
+      not exists (select 1 from user_follows where follower_user_id = users.id)
+      and posts.user_id != users.id
+    )
+  )
+  order by posts.created_at desc, posts.id desc
+  limit 1
+)
+left join users post_users on post_users.id = posts.user_id
+where daily_push_sends.user_id is null
+order by users.id asc
+limit ?`, sentOn, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var candidates []DailyPushCandidate
+	for rows.Next() {
+		var candidate DailyPushCandidate
+		var post Post
+		var postID, postUserID sql.NullInt64
+		var postUsername, postWord sql.NullString
+		var imageURL sql.NullString
+		var focusX, focusY sql.NullFloat64
+		var postCreatedAt sql.NullTime
+		if err := rows.Scan(
+			&candidate.User.ID,
+			&candidate.User.Username,
+			&candidate.User.Domain,
+			&candidate.User.Email,
+			&candidate.User.FediverseAcct,
+			&candidate.User.EmailOptIn,
+			&candidate.User.TimestampPreference,
+			&candidate.User.MigrationTarget,
+			&candidate.User.CreatedAt,
+			&postID,
+			&postUserID,
+			&postUsername,
+			&postWord,
+			&imageURL,
+			&focusX,
+			&focusY,
+			&postCreatedAt,
+			&candidate.SentCount,
+		); err != nil {
+			return nil, err
+		}
+		candidate.User.TimestampPreference = normalizeTimestampPreference(candidate.User.TimestampPreference)
+		if postID.Valid && postUserID.Valid && postUsername.Valid && postWord.Valid && postCreatedAt.Valid {
+			post.ID = postID.Int64
+			post.UserID = postUserID.Int64
+			post.Username = postUsername.String
+			post.Word = postWord.String
+			post.ImageURL = imageURL
+			post.FocusX = 0.5
+			post.FocusY = 0.5
+			if focusX.Valid {
+				post.FocusX = focusX.Float64
+			}
+			if focusY.Valid {
+				post.FocusY = focusY.Float64
+			}
+			post.CreatedAt = postCreatedAt.Time
+			candidate.Post = sql.Null[Post]{V: post, Valid: true}
+		}
+		candidates = append(candidates, candidate)
+	}
+	return candidates, rows.Err()
+}
+
 func (db *DB) MarkDailyEmailSent(userID int64, sentOn string) error {
 	_, err := db.Exec(`insert or ignore into daily_email_sends(user_id, sent_on) values(?, ?)`, userID, sentOn)
+	return err
+}
+
+func (db *DB) MarkDailyPushSent(userID int64, sentOn string) error {
+	_, err := db.Exec(`insert or ignore into daily_push_sends(user_id, sent_on) values(?, ?)`, userID, sentOn)
 	return err
 }
 

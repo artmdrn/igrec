@@ -196,6 +196,58 @@ func TestPushSubscriptionLifecycle(t *testing.T) {
 	}
 }
 
+func TestDailyPushCandidatesFollowSubscriptionsAndDayLedger(t *testing.T) {
+	db := testDB(t)
+	author, err := db.CreateUser("author", "author@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, err := db.CreateUser("reader", "reader@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	idle, err := db.CreateUser("idle", "idle@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.UpsertPushSubscription(reader.ID, "https://push.example/reader", "p256dh-reader", "auth-reader"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CreateUserFollow(reader.ID, author.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.CreatePost(author.ID, "ember", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	candidates, err := db.DailyPushCandidates("2026-06-17", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 1 {
+		t.Fatalf("expected one push candidate, got %#v", candidates)
+	}
+	if candidates[0].User.ID != reader.ID {
+		t.Fatalf("expected reader candidate, got %#v", candidates[0].User)
+	}
+	if !candidates[0].Post.Valid || candidates[0].Post.V.Word != "ember" || candidates[0].Post.V.Username != "author" {
+		t.Fatalf("expected followed post in push candidate, got %#v", candidates[0].Post)
+	}
+	if err := db.MarkDailyPushSent(reader.ID, "2026-06-17"); err != nil {
+		t.Fatal(err)
+	}
+	candidates, err = db.DailyPushCandidates("2026-06-17", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(candidates) != 0 {
+		t.Fatalf("expected no same-day push candidates after send, got %#v", candidates)
+	}
+	if subs, err := db.PushSubscriptionsByUser(idle.ID); err != nil || len(subs) != 0 {
+		t.Fatalf("expected idle user to remain unsubscribed, got %#v err=%v", subs, err)
+	}
+}
+
 func TestRelMeLinksRoundTrip(t *testing.T) {
 	db := testDB(t)
 	user, err := db.CreateUser("links", "links@example.com")

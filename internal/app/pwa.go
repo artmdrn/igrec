@@ -6,6 +6,8 @@ import (
 	"net/http"
 )
 
+const NotificationURL = "/write?source=push&focus=1"
+
 func (a *App) manifest(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, "application/manifest+json; charset=utf-8", map[string]any{
 		"id":               "/write",
@@ -66,7 +68,7 @@ func (a *App) serviceWorker(w http.ResponseWriter, r *http.Request) {
 
 const CACHE = "igrec-shell-%s";
 const PRECACHE = %s;
-const NOTIFICATION_URL = "/write?source=push&focus=1";
+const NOTIFICATION_URL = "%s";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(PRECACHE)));
@@ -111,6 +113,32 @@ self.addEventListener("fetch", (event) => {
   );
 });
 
+self.addEventListener("push", (event) => {
+  let payload = {};
+  if (event.data) {
+    try {
+      payload = event.data.json();
+    } catch (_error) {
+      payload = { body: event.data.text() };
+    }
+  }
+  const title = payload.title || "igrec";
+  const body = payload.body || ">_";
+  const url = payload.url || NOTIFICATION_URL;
+  const tag = payload.tag || "daily-prompt";
+
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      tag,
+      renotify: true,
+      icon: "%s",
+      badge: "%s",
+      data: { url },
+    }),
+  );
+});
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const target = new URL(
@@ -138,6 +166,6 @@ self.addEventListener("notificationclick", (event) => {
       return undefined;
     }),
   );
-});`, assetsVersion, precacheJSON)
+});`, assetsVersion, precacheJSON, NotificationURL, assetPath("icon-192.png"), assetPath("icon-192.png"))
 	_, _ = w.Write([]byte(source))
 }

@@ -3,6 +3,7 @@ module igrec.net/igrec
 go 1.25.0
 
 require (
+	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/go-webauthn/webauthn v0.17.3
 	github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0
 	github.com/mattn/go-sqlite3 v1.14.22

@@ -1,14 +1,22 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
+	"net/mail"
 	"time"
+
+	webpush "github.com/SherClockHolmes/webpush-go"
 
 	"igrec.net/igrec/internal/app"
 	emailpkg "igrec.net/igrec/internal/email"
 	"igrec.net/igrec/internal/store"
 )
+
+var sendWebPushNotification = webpush.SendNotification
 
 func sendDailyEmails(cfg app.Config, db *store.DB) (int, error) {
 	sentOn := time.Now().UTC().Format(time.DateOnly)
@@ -47,6 +55,104 @@ func sendDailyEmails(cfg app.Config, db *store.DB) (int, error) {
 		sent++
 	}
 	return sent, nil
+}
+
+func sendDailyPushes(cfg app.Config, db *store.DB, client webpush.HTTPClient) (int, int, error) {
+	if cfg.VAPIDPublic == "" || cfg.VAPIDPrivate == "" {
+		return 0, 0, nil
+	}
+
+	sentOn := time.Now().UTC().Format(time.DateOnly)
+	candidates, err := db.DailyPushCandidates(sentOn, 500)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	options := &webpush.Options{
+		HTTPClient:      client,
+		Subscriber:      pushSubscriber(cfg),
+		TTL:             3600,
+		Topic:           "daily-prompt",
+		Urgency:         webpush.UrgencyHigh,
+		VAPIDPublicKey:  cfg.VAPIDPublic,
+		VAPIDPrivateKey: cfg.VAPIDPrivate,
+	}
+
+	sentUsers := 0
+	sentSubscriptions := 0
+	for _, candidate := range candidates {
+		subscriptions, err := db.PushSubscriptionsByUser(candidate.User.ID)
+		if err != nil {
+			return sentUsers, sentSubscriptions, err
+		}
+		payload, err := dailyPushPayload(candidate)
+		if err != nil {
+			return sentUsers, sentSubscriptions, err
+		}
+
+		delivered := 0
+		for _, subscription := range subscriptions {
+			resp, err := sendWebPushNotification(payload, &webpush.Subscription{
+				Endpoint: subscription.Endpoint,
+				Keys: webpush.Keys{
+					Auth:   subscription.Auth,
+					P256dh: subscription.P256DH,
+				},
+			}, options)
+			if err != nil {
+				return sentUsers, sentSubscriptions, fmt.Errorf("send daily push to @%s endpoint %s: %w", candidate.User.Username, subscription.Endpoint, err)
+			}
+			if resp == nil {
+				continue
+			}
+			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+			resp.Body.Close()
+
+			switch resp.StatusCode {
+			case http.StatusCreated, http.StatusAccepted:
+				delivered++
+				sentSubscriptions++
+			case http.StatusGone, http.StatusNotFound:
+				if err := db.DeletePushSubscription(candidate.User.ID, subscription.Endpoint); err != nil {
+					return sentUsers, sentSubscriptions, err
+				}
+			default:
+				return sentUsers, sentSubscriptions, fmt.Errorf("send daily push to @%s endpoint %s: unexpected status %s", candidate.User.Username, subscription.Endpoint, resp.Status)
+			}
+		}
+		if delivered == 0 {
+			continue
+		}
+		if err := db.MarkDailyPushSent(candidate.User.ID, sentOn); err != nil {
+			return sentUsers, sentSubscriptions, err
+		}
+		sentUsers++
+	}
+	return sentUsers, sentSubscriptions, nil
+}
+
+func dailyPushPayload(candidate store.DailyPushCandidate) ([]byte, error) {
+	body := ">_"
+	if candidate.Post.Valid {
+		post := candidate.Post.V
+		body = fmt.Sprintf("@%s said: %s", post.Username, post.Word)
+	}
+	if candidate.SentCount == 0 {
+		body += "\nreply with one word."
+	}
+	return json.Marshal(map[string]any{
+		"title": "igrec",
+		"body":  body,
+		"url":   app.NotificationURL,
+		"tag":   "daily-prompt",
+	})
+}
+
+func pushSubscriber(cfg app.Config) string {
+	if address, err := mail.ParseAddress(cfg.DailyEmailFrom); err == nil && address.Address != "" {
+		return address.Address
+	}
+	return cfg.BaseURL
 }
 
 func printDailyEmailStatus(db *store.DB) error {
