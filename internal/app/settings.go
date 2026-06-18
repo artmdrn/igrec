@@ -3,6 +3,7 @@ package app
 import (
 	"errors"
 	"html/template"
+	"log"
 	"net/http"
 	"net/mail"
 	"net/url"
@@ -198,7 +199,12 @@ func (a *App) friends(w http.ResponseWriter, r *http.Request) {
 		if r.FormValue("action") == "unfriend" {
 			_ = a.db.DeleteUserFollow(user.ID, target.ID)
 		} else {
-			_ = a.db.CreateUserFollow(user.ID, target.ID)
+			created, err := a.db.CreateUserFollowChanged(user.ID, target.ID)
+			if err != nil {
+				log.Printf("create follow failed follower=@%s target=@%s err=%v", user.Username, target.Username, err)
+			} else if created {
+				a.notifyFollowedUser(target, user)
+			}
 		}
 		http.Redirect(w, r, safeNext(r.FormValue("next")), http.StatusSeeOther)
 		return

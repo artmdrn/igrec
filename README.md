@@ -35,6 +35,7 @@ go run ./cmd/igrec send-daily-email
 
 Production runs this through `igrec-daily-email.timer` at 08:20 Europe/Paris.
 The same job now mirrors the daily prompt to stored browser push subscriptions when VAPID keys are configured.
+Local follows also trigger a browser push to the followed account when that user has active subscriptions, linking straight to the follower profile.
 During beta, the nudge uses the newest word from someone else; once local follow relationships exist, the same job should narrow that source to followed accounts.
 
 ## API and export
@@ -87,7 +88,7 @@ The server uses `openssl smime` to sign `manifest.json`, so `openssl` must be av
 - IndieAuth and Mastodon OAuth
 - Configure operator accounts with `OPERATOR_EMAILS`
 - Signed ActivityPub delivery to follower inboxes
-- Web Push delivery for account events
+- Web Push delivery for daily prompt and local follow events
 - Settings migration and delete flows
 
 ## Image uploads

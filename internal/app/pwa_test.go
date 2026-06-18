@@ -2,11 +2,14 @@ package app
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+
+	webpush "github.com/SherClockHolmes/webpush-go"
 )
 
 func TestManifestIncludesPWAInstallMetadata(t *testing.T) {
@@ -238,5 +241,100 @@ func TestPushSubscribeRejectsWhenVAPIDNotConfigured(t *testing.T) {
 	}
 	if subscriptions, err := a.db.PushSubscriptionsByUser(user.ID); err != nil || len(subscriptions) != 0 {
 		t.Fatalf("expected no stored subscriptions, got %d err=%v", len(subscriptions), err)
+	}
+}
+
+func TestFollowingUserSendsPushNotificationOnce(t *testing.T) {
+	a := testApp(t)
+	pair := mustVAPIDPair(t)
+	a.cfg.VAPIDPublic = pair.public
+	a.cfg.VAPIDPrivate = pair.private
+
+	follower, err := a.db.CreateUser("reader", "reader@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	followed, err := a.db.CreateUser("author", "author@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.UpsertPushSubscription(followed.ID, "https://push.example/author", "p256dh-author", "auth-author"); err != nil {
+		t.Fatal(err)
+	}
+	sessionToken, sessionHash, err := newToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.CreateSession(sessionHash, follower.ID, farFuture()); err != nil {
+		t.Fatal(err)
+	}
+
+	wGet := httptest.NewRecorder()
+	reqGet := httptest.NewRequest(http.MethodGet, "/settings", nil)
+	reqGet.AddCookie(&http.Cookie{Name: sessionCookie, Value: sessionToken})
+	a.settings(wGet, reqGet)
+	csrf := cookieByName(wGet.Result(), csrfCookie)
+	if csrf == nil || csrf.Value == "" {
+		t.Fatal("expected csrf cookie from GET /settings")
+	}
+
+	type payload struct {
+		Title string `json:"title"`
+		Body  string `json:"body"`
+		URL   string `json:"url"`
+		Tag   string `json:"tag"`
+	}
+	var delivered []payload
+	original := sendBrowserPushNotification
+	sendBrowserPushNotification = func(message []byte, sub *webpush.Subscription, options *webpush.Options) (*http.Response, error) {
+		var got payload
+		if err := json.Unmarshal(message, &got); err != nil {
+			t.Fatalf("unmarshal push payload: %v", err)
+		}
+		delivered = append(delivered, got)
+		return &http.Response{
+			StatusCode: http.StatusCreated,
+			Status:     "201 Created",
+			Body:       io.NopCloser(strings.NewReader("")),
+		}, nil
+	}
+	defer func() { sendBrowserPushNotification = original }()
+
+	form := url.Values{}
+	form.Set(csrfField, csrf.Value)
+	form.Set("username", followed.Username)
+	form.Set("next", "/@"+followed.Username)
+	reqFollow := httptest.NewRequest(http.MethodPost, "/friends", strings.NewReader(form.Encode()))
+	reqFollow.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	reqFollow.AddCookie(&http.Cookie{Name: sessionCookie, Value: sessionToken})
+	reqFollow.AddCookie(csrf)
+	wFollow := httptest.NewRecorder()
+	a.friends(wFollow, reqFollow)
+
+	if wFollow.Code != http.StatusSeeOther {
+		t.Fatalf("expected follow redirect status %d, got %d", http.StatusSeeOther, wFollow.Code)
+	}
+	if len(delivered) != 1 {
+		t.Fatalf("expected one delivered push, got %#v", delivered)
+	}
+	if delivered[0].Title != "igrec" || delivered[0].Body != "@reader followed you" || delivered[0].URL != "/@reader" || delivered[0].Tag != "follow-reader" {
+		t.Fatalf("unexpected push payload %#v", delivered[0])
+	}
+	if follows, err := a.db.UserFollows(follower.ID, followed.ID); err != nil || !follows {
+		t.Fatalf("expected stored follow, got follows=%v err=%v", follows, err)
+	}
+
+	wRepeat := httptest.NewRecorder()
+	reqRepeat := httptest.NewRequest(http.MethodPost, "/friends", strings.NewReader(form.Encode()))
+	reqRepeat.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	reqRepeat.AddCookie(&http.Cookie{Name: sessionCookie, Value: sessionToken})
+	reqRepeat.AddCookie(csrf)
+	a.friends(wRepeat, reqRepeat)
+
+	if wRepeat.Code != http.StatusSeeOther {
+		t.Fatalf("expected repeat follow redirect status %d, got %d", http.StatusSeeOther, wRepeat.Code)
+	}
+	if len(delivered) != 1 {
+		t.Fatalf("expected no duplicate push on repeat follow, got %#v", delivered)
 	}
 }

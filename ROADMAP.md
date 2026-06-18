@@ -100,7 +100,8 @@ Done when:
 - [x] Add VAPID key validation.
 - [x] Add push subscription storage.
 - [x] Send Web Push notifications for daily prompt.
-- Send Web Push notifications for relevant account events.
+- [x] Send Web Push notifications for local follow events.
+- Send Web Push notifications for other relevant account events.
 - [x] Make notification taps open `/write` with the input focused.
 
 Done when:

@@ -505,11 +505,23 @@ func (db *DB) UseInvite(code string, userID int64) error {
 }
 
 func (db *DB) CreateUserFollow(followerID, followedID int64) error {
-	if followerID == followedID {
-		return nil
-	}
-	_, err := db.Exec(`insert or ignore into user_follows(follower_user_id, followed_user_id) values(?, ?)`, followerID, followedID)
+	_, err := db.CreateUserFollowChanged(followerID, followedID)
 	return err
+}
+
+func (db *DB) CreateUserFollowChanged(followerID, followedID int64) (bool, error) {
+	if followerID == followedID {
+		return false, nil
+	}
+	res, err := db.Exec(`insert or ignore into user_follows(follower_user_id, followed_user_id) values(?, ?)`, followerID, followedID)
+	if err != nil {
+		return false, err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return rows > 0, nil
 }
 
 func (db *DB) DeleteUserFollow(followerID, followedID int64) error {
