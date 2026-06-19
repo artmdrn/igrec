@@ -36,6 +36,20 @@ func (a *App) notifyFollowedUser(followed, follower store.User) {
 	}
 }
 
+func (a *App) notifyInviterInviteUsed(inviter, joined store.User) {
+	if !a.pushConfigured() {
+		return
+	}
+	if err := a.sendPushToUser(inviter.ID, pushMessage{
+		Title: "igrec",
+		Body:  "@" + joined.Username + " joined with your invite",
+		URL:   "/@" + joined.Username,
+		Tag:   "invite-used-" + joined.Username,
+	}); err != nil {
+		log.Printf("invite push failed inviter=@%s joined=@%s err=%v", inviter.Username, joined.Username, err)
+	}
+}
+
 func (a *App) sendPushToUser(userID int64, msg pushMessage) error {
 	subscriptions, err := a.db.PushSubscriptionsByUser(userID)
 	if err != nil {

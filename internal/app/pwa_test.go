@@ -338,3 +338,82 @@ func TestFollowingUserSendsPushNotificationOnce(t *testing.T) {
 		t.Fatalf("expected no duplicate push on repeat follow, got %#v", delivered)
 	}
 }
+
+func TestInviteJoinSendsPushNotificationToInviter(t *testing.T) {
+	a := testApp(t)
+	pair := mustVAPIDPair(t)
+	a.cfg.VAPIDPublic = pair.public
+	a.cfg.VAPIDPrivate = pair.private
+
+	inviter, err := a.db.CreateUser("maker", "maker@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.CreateInviteForUser("join-123", inviter.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.UpsertPushSubscription(inviter.ID, "https://push.example/maker", "p256dh-maker", "auth-maker"); err != nil {
+		t.Fatal(err)
+	}
+
+	wGet := httptest.NewRecorder()
+	reqGet := httptest.NewRequest(http.MethodGet, "/join?invite=join-123", nil)
+	a.join(wGet, reqGet)
+	csrf := cookieByName(wGet.Result(), csrfCookie)
+	if csrf == nil || csrf.Value == "" {
+		t.Fatal("expected csrf cookie from GET /join")
+	}
+
+	type payload struct {
+		Title string `json:"title"`
+		Body  string `json:"body"`
+		URL   string `json:"url"`
+		Tag   string `json:"tag"`
+	}
+	var delivered []payload
+	original := sendBrowserPushNotification
+	sendBrowserPushNotification = func(message []byte, sub *webpush.Subscription, options *webpush.Options) (*http.Response, error) {
+		var got payload
+		if err := json.Unmarshal(message, &got); err != nil {
+			t.Fatalf("unmarshal push payload: %v", err)
+		}
+		delivered = append(delivered, got)
+		return &http.Response{
+			StatusCode: http.StatusCreated,
+			Status:     "201 Created",
+			Body:       io.NopCloser(strings.NewReader("")),
+		}, nil
+	}
+	defer func() { sendBrowserPushNotification = original }()
+
+	form := url.Values{}
+	form.Set(csrfField, csrf.Value)
+	form.Set("invite", "join-123")
+	form.Set("username", "newfriend")
+	form.Set("email", "newfriend@example.com")
+	reqJoin := httptest.NewRequest(http.MethodPost, "/join", strings.NewReader(form.Encode()))
+	reqJoin.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	reqJoin.AddCookie(csrf)
+	wJoin := httptest.NewRecorder()
+	a.join(wJoin, reqJoin)
+
+	if wJoin.Code != http.StatusSeeOther {
+		t.Fatalf("expected join redirect status %d, got %d: %s", http.StatusSeeOther, wJoin.Code, wJoin.Body.String())
+	}
+	if location := wJoin.Header().Get("Location"); location != "/write" {
+		t.Fatalf("expected join redirect to /write, got %q", location)
+	}
+	if len(delivered) != 1 {
+		t.Fatalf("expected one delivered push, got %#v", delivered)
+	}
+	if delivered[0].Title != "igrec" || delivered[0].Body != "@newfriend joined with your invite" || delivered[0].URL != "/@newfriend" || delivered[0].Tag != "invite-used-newfriend" {
+		t.Fatalf("unexpected push payload %#v", delivered[0])
+	}
+	joined, err := a.db.UserByUsername("newfriend")
+	if err != nil {
+		t.Fatalf("expected joined user, got err=%v", err)
+	}
+	if follows, err := a.db.UserFollows(joined.ID, inviter.ID); err != nil || !follows {
+		t.Fatalf("expected joined user to follow inviter, got follows=%v err=%v", follows, err)
+	}
+}

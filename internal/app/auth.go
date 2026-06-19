@@ -62,6 +62,9 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 		}
 		if invite.InviterID.Valid {
 			_ = a.db.CreateUserFollow(user.ID, invite.InviterID.Int64)
+			if inviter, err := a.db.UserByID(invite.InviterID.Int64); err == nil {
+				a.notifyInviterInviteUsed(inviter, user)
+			}
 		}
 		if cc, err := a.db.UserByUsername("cc00ffee"); err == nil {
 			_ = a.db.CreateUserFollow(user.ID, cc.ID)
