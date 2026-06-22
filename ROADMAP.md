@@ -86,7 +86,7 @@ Done when:
 - [x] Add one-click JSON export.
 - [x] Add ActivityPub-flavored export.
 - Add account migration UI.
-- Add delete-account flow with confirmation.
+- [x] Add delete-account flow with confirmation.
 - Add settings for fediverse handle, rel=me links, email preferences, export, migration, and deletion.
 
 Done when:
