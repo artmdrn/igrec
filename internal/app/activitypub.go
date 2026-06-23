@@ -34,6 +34,7 @@ type activityPubActivity struct {
 	Type    string `json:"type"`
 	Actor   string `json:"actor,omitempty"`
 	Object  any    `json:"object,omitempty"`
+	Target  any    `json:"target,omitempty"`
 	To      any    `json:"to,omitempty"`
 	CC      any    `json:"cc,omitempty"`
 }
@@ -43,9 +44,18 @@ type remoteActor struct {
 	Type          string `json:"type"`
 	Inbox         string `json:"inbox"`
 	PreferredName string `json:"preferredUsername"`
+	AlsoKnownAs   any    `json:"alsoKnownAs"`
 	Endpoints     struct {
 		SharedInbox string `json:"sharedInbox"`
 	} `json:"endpoints"`
+}
+
+type webFingerDocument struct {
+	Links []struct {
+		Rel  string `json:"rel"`
+		Type string `json:"type"`
+		Href string `json:"href"`
+	} `json:"links"`
 }
 
 func (a *App) webfinger(w http.ResponseWriter, r *http.Request) {
@@ -124,7 +134,12 @@ func (a *App) actor(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "activitypub key unavailable", http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, "application/activity+json; charset=utf-8", activitypub.Actor(a.cfg.BaseURL, user, publicKey))
+	actor := activitypub.Actor(a.cfg.BaseURL, user, publicKey)
+	if migration, err := a.db.AccountMigrationByUser(user.ID); err == nil {
+		actor["movedTo"] = migration.TargetActor
+		actor["discoverable"] = false
+	}
+	writeJSON(w, "application/activity+json; charset=utf-8", actor)
 }
 
 func (a *App) activityPubInbox(w http.ResponseWriter, r *http.Request, user store.User) {
@@ -245,6 +260,46 @@ func (a *App) deliverRecentPostsToInbox(user store.User, inbox string, limit int
 			a.enqueueActivityPubDelivery(user, inbox, create, err)
 		}
 	}
+}
+
+func (a *App) startAccountMigration(ctx context.Context, user store.User) error {
+	oldActor := activitypubActorID(a.cfg.BaseURL, user.Username)
+	targetActor, remote, err := resolveMigrationActor(ctx, user.MigrationTarget)
+	if err != nil {
+		return fmt.Errorf("migration target could not be verified: %w", err)
+	}
+	if targetActor == oldActor {
+		return errors.New("migration target must be a different account")
+	}
+	if !containsActivityPubObject(remote.AlsoKnownAs, oldActor) {
+		return errors.New("migration target must first list this igrec account as an alias")
+	}
+
+	move := activityPubActivity{
+		Context: "https://www.w3.org/ns/activitystreams",
+		ID:      oldActor + "/move/" + randomID(),
+		Type:    "Move",
+		Actor:   oldActor,
+		Object:  oldActor,
+		Target:  targetActor,
+		To:      []string{oldActor + "/followers"},
+	}
+	raw, err := json.Marshal(move)
+	if err != nil {
+		return err
+	}
+	followers, err := a.db.ActivityPubFollowers(user.ID)
+	if err != nil {
+		return err
+	}
+	inboxes := make([]string, 0, len(followers))
+	for _, follower := range followers {
+		inboxes = append(inboxes, follower.Inbox)
+	}
+	if err := a.db.StartAccountMigration(user.ID, targetActor, inboxes, raw); err != nil {
+		return fmt.Errorf("account migration could not be started: %w", err)
+	}
+	return nil
 }
 
 func (a *App) enqueueActivityPubDelivery(user store.User, inbox string, activity any, cause error) {
@@ -438,6 +493,58 @@ func fetchRemoteActor(ctx context.Context, actorURL string) (remoteActor, error)
 	return actor, nil
 }
 
+func resolveMigrationActor(ctx context.Context, target string) (string, remoteActor, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	actorURL := strings.TrimSpace(target)
+	if strings.HasPrefix(actorURL, "@") {
+		parts := strings.Split(strings.TrimPrefix(actorURL, "@"), "@")
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+			return "", remoteActor{}, errors.New("invalid fediverse handle")
+		}
+		webFingerURL := "https://" + parts[1] + "/.well-known/webfinger?resource=" + url.QueryEscape("acct:"+parts[0]+"@"+parts[1])
+		if !safeRemoteURL(webFingerURL) {
+			return "", remoteActor{}, errors.New("unsafe fediverse server")
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, webFingerURL, nil)
+		if err != nil {
+			return "", remoteActor{}, err
+		}
+		req.Header.Set("Accept", "application/jrd+json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return "", remoteActor{}, err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return "", remoteActor{}, fmt.Errorf("webfinger status %d", resp.StatusCode)
+		}
+		var document webFingerDocument
+		if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&document); err != nil {
+			return "", remoteActor{}, err
+		}
+		actorURL = ""
+		for _, link := range document.Links {
+			if link.Rel == "self" && (link.Type == "application/activity+json" || strings.Contains(link.Type, "application/ld+json")) {
+				actorURL = link.Href
+				break
+			}
+		}
+		if actorURL == "" {
+			return "", remoteActor{}, errors.New("webfinger has no ActivityPub actor")
+		}
+	}
+	remote, err := fetchRemoteActor(ctx, actorURL)
+	if err != nil {
+		return "", remoteActor{}, err
+	}
+	if remote.ID == "" || remote.ID != actorURL {
+		return "", remoteActor{}, errors.New("actor id does not match migration target")
+	}
+	return actorURL, remote, nil
+}
+
 func safeRemoteURL(raw string) bool {
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Hostname() == "" {
@@ -463,6 +570,20 @@ func sameActivityPubObject(value any, expected string) bool {
 	default:
 		return false
 	}
+}
+
+func containsActivityPubObject(value any, expected string) bool {
+	if sameActivityPubObject(value, expected) {
+		return true
+	}
+	if values, ok := value.([]any); ok {
+		for _, item := range values {
+			if sameActivityPubObject(item, expected) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func activitypubActorID(baseURL, username string) string {

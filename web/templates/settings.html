@@ -17,9 +17,13 @@
         <label>email <input type="email" name="email" value="{{.User.Email}}" autocomplete="email"></label>
         <label>fediverse <input name="fediverse" value="{{.User.FediverseAcct}}" placeholder="@you@example.social"></label>
       </div>
-      <label>migration target <input name="migration_target" value="{{.User.MigrationTarget}}" placeholder="@you@example.social or https://example.social/users/you"></label>
+      {{if .AccountMigration}}
+        <p class="system-message">account moved to <a href="{{.AccountMigration.TargetActor}}">{{.AccountMigration.TargetActor}}</a></p>
+      {{else}}
+        <label>migration target <input name="migration_target" value="{{.User.MigrationTarget}}" placeholder="@you@example.social or https://example.social/users/you"></label>
+      {{end}}
       <label>rel=me links <textarea name="rel_me" rows="4" placeholder="https://example.com/@you&#10;https://github.com/you">{{.RelMeText}}</textarea></label>
-      <p class="muted">Email is for login and daily words. rel=me links appear on your public profile. Migration target is saved for a future account move.</p>
+      <p class="muted">Email is for login and daily words. rel=me links appear on your public profile. Save a migration target here before moving the account.</p>
     </section>
 
     <section class="settings-section">
@@ -157,6 +161,12 @@ APPLE_WWDR_CERT_PATH=</pre>
     {{end}}
 
     <section class="settings-section danger-zone">
+      {{if not .AccountMigration}}
+        <h2>move account</h2>
+        <p class="muted">First add this igrec account as an alias at the migration target. Then type <strong>{{.User.Username}}</strong> to notify existing followers and permanently redirect the old fediverse actor.</p>
+        <label>confirm username <input name="confirm_migration_username" autocomplete="off" spellcheck="false"></label>
+        <button type="submit" name="action" value="migrate-account">move account</button>
+      {{end}}
       <h2>delete account</h2>
       <p class="muted">type <strong>{{.User.Username}}</strong> to permanently delete your account, words, invites, follows, and sessions.</p>
       <label>confirm username <input name="confirm_username" autocomplete="off" spellcheck="false"></label>

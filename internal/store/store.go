@@ -109,6 +109,12 @@ type ActivityPubDelivery struct {
 	DeliveredAt sql.NullTime
 }
 
+type AccountMigration struct {
+	UserID      int64
+	TargetActor string
+	CreatedAt   time.Time
+}
+
 func Open(databaseURL string) (*DB, error) {
 	driver, dsn, err := parseDatabaseURL(databaseURL)
 	if err != nil {
@@ -289,6 +295,11 @@ create table if not exists activitypub_deliveries (
   last_error text not null default '',
   created_at datetime not null default current_timestamp,
   delivered_at datetime
+);
+create table if not exists account_migrations (
+  user_id integer primary key references users(id),
+  target_actor text not null,
+  created_at datetime not null default current_timestamp
 );
 create index if not exists activitypub_deliveries_due_idx on activitypub_deliveries(delivered_at, next_at, id);
 create index if not exists activitypub_deliveries_user_idx on activitypub_deliveries(user_id);
@@ -881,6 +892,32 @@ func (db *DB) EnqueueActivityPubDelivery(userID int64, inbox string, activity []
 	return err
 }
 
+func (db *DB) AccountMigrationByUser(userID int64) (AccountMigration, error) {
+	var migration AccountMigration
+	err := db.QueryRow(`select user_id, target_actor, created_at from account_migrations where user_id = ?`, userID).
+		Scan(&migration.UserID, &migration.TargetActor, &migration.CreatedAt)
+	return migration, err
+}
+
+func (db *DB) StartAccountMigration(userID int64, targetActor string, inboxes []string, activity []byte) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`insert into account_migrations(user_id, target_actor) values(?, ?)`, userID, strings.TrimSpace(targetActor)); err != nil {
+		return err
+	}
+	for _, inbox := range inboxes {
+		if _, err := tx.Exec(`insert into activitypub_deliveries(user_id, inbox_url, activity_json, next_at) values(?, ?, ?, ?)`,
+			userID, inbox, string(activity), time.Now().UTC()); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 func (db *DB) DueActivityPubDeliveries(now time.Time, limit int) ([]ActivityPubDelivery, error) {
 	if limit <= 0 {
 		limit = 100
@@ -946,6 +983,7 @@ func (db *DB) DeleteUser(userID int64) error {
 		`delete from follows where user_id = ?`,
 		`delete from activitypub_keys where user_id = ?`,
 		`delete from activitypub_deliveries where user_id = ?`,
+		`delete from account_migrations where user_id = ?`,
 		`delete from api_tokens where user_id = ?`,
 		`delete from push_subscriptions where user_id = ?`,
 		`delete from rel_me_links where user_id = ?`,

@@ -58,6 +58,23 @@ func (a *App) settings(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
+		if r.FormValue("action") == "migrate-account" {
+			confirmation := strings.TrimSpace(r.FormValue("confirm_migration_username"))
+			if confirmation != user.Username {
+				a.render(w, r, "settings.html", a.withCSRF(w, r, a.settingsData(user, map[string]any{"Error": "type your username to move this account"})))
+				return
+			}
+			if strings.TrimSpace(user.MigrationTarget) == "" {
+				a.render(w, r, "settings.html", a.withCSRF(w, r, a.settingsData(user, map[string]any{"Error": "save a migration target before moving this account"})))
+				return
+			}
+			if err := a.startAccountMigration(r.Context(), user); err != nil {
+				a.render(w, r, "settings.html", a.withCSRF(w, r, a.settingsData(user, map[string]any{"Error": err.Error()})))
+				return
+			}
+			http.Redirect(w, r, "/settings", http.StatusSeeOther)
+			return
+		}
 		if r.FormValue("action") == "delete-account" {
 			confirmation := strings.TrimSpace(r.FormValue("confirm_username"))
 			if confirmation != user.Username {
@@ -345,6 +362,9 @@ func (a *App) operatorInvites(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) settingsData(user store.User, extra map[string]any) map[string]any {
 	data := map[string]any{"User": user, "VAPIDPublic": a.cfg.VAPIDPublic}
+	if migration, err := a.db.AccountMigrationByUser(user.ID); err == nil {
+		data["AccountMigration"] = migration
+	}
 	profileURL := strings.TrimRight(a.cfg.BaseURL, "/") + "/@" + url.PathEscape(user.Username)
 	badgeURL := profileURL + "/badge.svg"
 	data["ProfileURL"] = profileURL
