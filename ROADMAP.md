@@ -4,7 +4,7 @@ This roadmap is ordered so each step leaves the service more real without turnin
 
 ## Phase 0: Stabilize The Deployed Skeleton
 
-- Replace demo-only posting with a real current-user boundary, even before full auth.
+- [x] Replace demo-only posting with a real current-user boundary, even before full auth.
 - Add structured config validation on boot for production-required variables.
 - [x] Add a health endpoint for uptime checks.
 - [x] Add basic request logging and error logs that do not leak secrets.
