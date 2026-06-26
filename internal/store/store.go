@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"igrec.net/igrec/internal/word"
+
 	"github.com/go-webauthn/webauthn/webauthn"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -1326,11 +1328,15 @@ func (db *DB) CreatePost(userID int64, value string, imageURL *string) (Post, er
 }
 
 func (db *DB) CreatePostWithFocus(userID int64, value string, imageURL *string, focusX, focusY float64) (Post, error) {
+	normalized, err := word.Normalize(value)
+	if err != nil {
+		return Post{}, err
+	}
 	var nullable sql.NullString
 	if imageURL != nil && *imageURL != "" {
 		nullable = sql.NullString{String: *imageURL, Valid: true}
 	}
-	res, err := db.Exec(`insert into posts(user_id, word, image_url, image_focus_x, image_focus_y) values(?, ?, ?, ?, ?)`, userID, value, nullable, clampFocus(focusX), clampFocus(focusY))
+	res, err := db.Exec(`insert into posts(user_id, word, image_url, image_focus_x, image_focus_y) values(?, ?, ?, ?, ?)`, userID, normalized, nullable, clampFocus(focusX), clampFocus(focusY))
 	if err != nil {
 		return Post{}, err
 	}

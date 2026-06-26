@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"igrec.net/igrec/internal/word"
 )
 
 func testDB(t *testing.T) *DB {
@@ -305,6 +307,31 @@ func TestCreatePostWithFocusStoresClampedFocus(t *testing.T) {
 	}
 	if found.FocusX != 1 || found.FocusY != 0 {
 		t.Fatalf("expected stored focus 1,0 got %.2f,%.2f", found.FocusX, found.FocusY)
+	}
+}
+
+func TestCreatePostNormalizesAndRejectsInvalidWords(t *testing.T) {
+	db := testDB(t)
+	user, err := db.CreateUser("words", "words@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	post, err := db.CreatePost(user.ID, "  ember  ", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if post.Word != "ember" {
+		t.Fatalf("expected normalized word, got %q", post.Word)
+	}
+	if _, err := db.CreatePost(user.ID, "two words", nil); !errors.Is(err, word.ErrWhitespace) {
+		t.Fatalf("expected whitespace validation error, got %v", err)
+	}
+	posts, err := db.PostsByUser(user.Username, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(posts) != 1 {
+		t.Fatalf("expected invalid post to be rejected, got %#v", posts)
 	}
 }
 
