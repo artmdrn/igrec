@@ -52,7 +52,7 @@ Done when:
 
 ## Phase 3: ActivityPub Basics
 
-- Add actor key generation and HTTP signatures.
+- [x] Add actor key generation and HTTP signatures.
 - Implement inbox handling for Follow, Undo Follow, Accept, Reject, and Move.
 - Store followers and follower inboxes.
 - Deliver Create/Note activities to follower inboxes.

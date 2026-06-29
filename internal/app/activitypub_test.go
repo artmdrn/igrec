@@ -1,7 +1,13 @@
 package app
 
 import (
+	"crypto"
+	"crypto/rsa"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -59,6 +65,57 @@ func TestActivityPubActorIncludesPublicKeyAndMedia(t *testing.T) {
 	}
 	if got, _ := actor["following"].(string); got != "http://localhost:8080/ap/users/cc00ffee/following" {
 		t.Fatalf("unexpected following URL %q", got)
+	}
+}
+
+func TestSignActivityPubRequestUsesActorKey(t *testing.T) {
+	a := testApp(t)
+	user, err := a.db.CreateUser("cc00ffee", "cc@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	privateKey, err := a.activityPubPrivateKey(user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicPEM, err := a.activityPubPublicKey(user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey := parseTestRSAPublicKey(t, publicPEM)
+	if publicKey.N.Cmp(privateKey.N) != 0 || publicKey.E != privateKey.E {
+		t.Fatal("expected actor public key to match signing private key")
+	}
+
+	body := []byte(`{"type":"Accept"}`)
+	req := httptest.NewRequest(http.MethodPost, "https://remote.example/inbox?x=1", strings.NewReader(string(body)))
+	req.Header.Set("Date", "Mon, 29 Jun 2026 12:00:00 GMT")
+	sum := sha256.Sum256(body)
+	req.Header.Set("Digest", "SHA-256="+base64.StdEncoding.EncodeToString(sum[:]))
+	keyID := activitypubActorID(a.cfg.BaseURL, user.Username) + "#main-key"
+
+	if err := signActivityPubRequest(req, privateKey, keyID); err != nil {
+		t.Fatal(err)
+	}
+	signature := req.Header.Get("Signature")
+	if !strings.Contains(signature, `keyId="`+keyID+`"`) || !strings.Contains(signature, `headers="(request-target) host date digest"`) {
+		t.Fatalf("unexpected signature header %q", signature)
+	}
+	sig := signatureParam(t, signature, "signature")
+	signed := "(request-target): post /inbox?x=1\n" +
+		"host: remote.example\n" +
+		"date: Mon, 29 Jun 2026 12:00:00 GMT\n" +
+		"digest: " + req.Header.Get("Digest")
+	digest := sha256.Sum256([]byte(signed))
+	rawSig, err := base64.StdEncoding.DecodeString(sig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rsa.VerifyPKCS1v15(publicKey, crypto.SHA256, digest[:], rawSig); err != nil {
+		t.Fatalf("signature does not verify with actor public key: %v", err)
+	}
+	if req.Host != "remote.example" {
+		t.Fatalf("expected Host to be signed host, got %q", req.Host)
 	}
 }
 
@@ -196,4 +253,34 @@ func TestStartAccountMigrationRequiresAlias(t *testing.T) {
 	if _, err := a.db.AccountMigrationByUser(user.ID); err == nil {
 		t.Fatal("expected migration not to start")
 	}
+}
+
+func parseTestRSAPublicKey(t *testing.T, publicPEM string) *rsa.PublicKey {
+	t.Helper()
+	block, _ := pem.Decode([]byte(publicPEM))
+	if block == nil {
+		t.Fatal("public key PEM did not decode")
+	}
+	raw, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey, ok := raw.(*rsa.PublicKey)
+	if !ok {
+		t.Fatalf("expected RSA public key, got %T", raw)
+	}
+	return publicKey
+}
+
+func signatureParam(t *testing.T, header, key string) string {
+	t.Helper()
+	for _, part := range strings.Split(header, ",") {
+		name, value, ok := strings.Cut(strings.TrimSpace(part), "=")
+		if !ok || name != key {
+			continue
+		}
+		return strings.Trim(value, `"`)
+	}
+	t.Fatalf("signature header missing %s: %q", key, header)
+	return ""
 }
