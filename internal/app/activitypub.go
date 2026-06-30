@@ -161,6 +161,10 @@ func (a *App) activityPubInbox(w http.ResponseWriter, r *http.Request, user stor
 		a.acceptActivityPubFollow(w, r, user, activity)
 	case "Undo":
 		a.undoActivityPubFollow(w, user, activity)
+	case "Move":
+		a.moveActivityPubFollower(w, r, user, activity)
+	case "Accept", "Reject":
+		w.WriteHeader(http.StatusAccepted)
 	default:
 		w.WriteHeader(http.StatusAccepted)
 	}
@@ -219,6 +223,45 @@ func (a *App) undoActivityPubFollow(w http.ResponseWriter, user store.User, acti
 	}
 	if actor != "" {
 		_ = a.db.DeleteActivityPubFollower(user.ID, actor)
+	}
+	w.WriteHeader(http.StatusAccepted)
+}
+
+func (a *App) moveActivityPubFollower(w http.ResponseWriter, r *http.Request, user store.User, activity activityPubActivity) {
+	oldActor := activity.Actor
+	if oldActor == "" || !sameActivityPubObject(activity.Object, oldActor) {
+		http.Error(w, "unsupported move", http.StatusBadRequest)
+		return
+	}
+	newActor := activityPubObjectID(activity.Target)
+	if newActor == "" || newActor == oldActor {
+		http.Error(w, "unsupported move", http.StatusBadRequest)
+		return
+	}
+	remote, err := fetchRemoteActor(r.Context(), newActor)
+	if err != nil {
+		http.Error(w, "move target unavailable", http.StatusBadGateway)
+		return
+	}
+	if remote.ID != "" && remote.ID != newActor {
+		http.Error(w, "move target mismatch", http.StatusBadRequest)
+		return
+	}
+	if !containsActivityPubObject(remote.AlsoKnownAs, oldActor) {
+		http.Error(w, "move target does not alias actor", http.StatusBadRequest)
+		return
+	}
+	inbox := remote.Endpoints.SharedInbox
+	if inbox == "" {
+		inbox = remote.Inbox
+	}
+	if inbox == "" {
+		http.Error(w, "move target inbox unavailable", http.StatusBadRequest)
+		return
+	}
+	if _, err := a.db.MoveActivityPubFollower(user.ID, oldActor, newActor, inbox); err != nil {
+		http.Error(w, "move failed", http.StatusInternalServerError)
+		return
 	}
 	w.WriteHeader(http.StatusAccepted)
 }
@@ -569,6 +612,18 @@ func sameActivityPubObject(value any, expected string) bool {
 		return id == expected
 	default:
 		return false
+	}
+}
+
+func activityPubObjectID(value any) string {
+	switch object := value.(type) {
+	case string:
+		return object
+	case map[string]any:
+		id, _ := object["id"].(string)
+		return id
+	default:
+		return ""
 	}
 }
 

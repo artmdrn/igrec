@@ -575,6 +575,34 @@ func (db *DB) DeleteActivityPubFollower(userID int64, actor string) error {
 	return err
 }
 
+func (db *DB) MoveActivityPubFollower(userID int64, oldActor, newActor, inbox string) (bool, error) {
+	if oldActor == "" || newActor == "" || oldActor == newActor {
+		return false, nil
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+
+	res, err := tx.Exec(`delete from follows where user_id = ? and follower_actor = ?`, userID, oldActor)
+	if err != nil {
+		return false, err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if rows == 0 {
+		return false, tx.Commit()
+	}
+	if _, err := tx.Exec(`insert into follows(follower_actor, user_id, inbox_url) values(?, ?, ?)
+on conflict(follower_actor, user_id) do update set inbox_url = excluded.inbox_url`, newActor, userID, inbox); err != nil {
+		return false, err
+	}
+	return true, tx.Commit()
+}
+
 func (db *DB) ActivityPubFollowers(userID int64) ([]ActivityPubFollower, error) {
 	rows, err := db.Query(`select follower_actor, inbox_url from follows where user_id = ? order by created_at asc`, userID)
 	if err != nil {

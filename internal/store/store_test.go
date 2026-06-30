@@ -386,6 +386,46 @@ func TestPostsByWordExcludesCurrentPost(t *testing.T) {
 	}
 }
 
+func TestMoveActivityPubFollowerRenamesActorAndInbox(t *testing.T) {
+	db := testDB(t)
+	user, err := db.CreateUser("fed", "fed@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.UpsertActivityPubFollower(user.ID, "https://old.example/users/fed", "https://old.example/inbox"); err != nil {
+		t.Fatal(err)
+	}
+	moved, err := db.MoveActivityPubFollower(user.ID, "https://old.example/users/fed", "https://new.example/users/fed", "https://new.example/inbox")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !moved {
+		t.Fatal("expected follower to move")
+	}
+	followers, err := db.ActivityPubFollowers(user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(followers) != 1 || followers[0].Actor != "https://new.example/users/fed" || followers[0].Inbox != "https://new.example/inbox" {
+		t.Fatalf("unexpected followers %#v", followers)
+	}
+
+	moved, err = db.MoveActivityPubFollower(user.ID, "https://missing.example/users/fed", "https://other.example/users/fed", "https://other.example/inbox")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if moved {
+		t.Fatal("expected missing follower to be ignored")
+	}
+	followers, err = db.ActivityPubFollowers(user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(followers) != 1 || followers[0].Actor != "https://new.example/users/fed" {
+		t.Fatalf("unexpected followers after missing move %#v", followers)
+	}
+}
+
 func TestActivityPubDeliveryLifecycle(t *testing.T) {
 	db := testDB(t)
 	user, err := db.CreateUser("fed", "fed@example.com")

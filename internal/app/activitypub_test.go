@@ -255,6 +255,79 @@ func TestStartAccountMigrationRequiresAlias(t *testing.T) {
 	}
 }
 
+func TestActivityPubInboxMoveUpdatesFollower(t *testing.T) {
+	a := testApp(t)
+	user, err := a.db.CreateUser("member", "member@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldActor := "https://old.example/users/member"
+	newActor := "https://new.example/users/member"
+	if err := a.db.UpsertActivityPubFollower(user.ID, oldActor, "https://old.example/inbox"); err != nil {
+		t.Fatal(err)
+	}
+
+	oldClient := http.DefaultClient
+	http.DefaultClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL.String() != newActor {
+			t.Fatalf("expected target actor fetch %q, got %q", newActor, req.URL.String())
+		}
+		body := `{"id":"` + newActor + `","type":"Person","inbox":"https://new.example/inbox","alsoKnownAs":["` + oldActor + `"]}`
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
+	})}
+	t.Cleanup(func() { http.DefaultClient = oldClient })
+
+	body := `{"type":"Move","actor":"` + oldActor + `","object":"` + oldActor + `","target":"` + newActor + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/ap/users/member/inbox", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	a.actor(w, req)
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusAccepted, w.Code, w.Body.String())
+	}
+	followers, err := a.db.ActivityPubFollowers(user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(followers) != 1 || followers[0].Actor != newActor || followers[0].Inbox != "https://new.example/inbox" {
+		t.Fatalf("expected moved follower, got %#v", followers)
+	}
+}
+
+func TestActivityPubInboxMoveRequiresAlias(t *testing.T) {
+	a := testApp(t)
+	user, err := a.db.CreateUser("member", "member@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldActor := "https://old.example/users/member"
+	newActor := "https://new.example/users/member"
+	if err := a.db.UpsertActivityPubFollower(user.ID, oldActor, "https://old.example/inbox"); err != nil {
+		t.Fatal(err)
+	}
+
+	oldClient := http.DefaultClient
+	http.DefaultClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		body := `{"id":"` + newActor + `","type":"Person","inbox":"https://new.example/inbox"}`
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
+	})}
+	t.Cleanup(func() { http.DefaultClient = oldClient })
+
+	body := `{"type":"Move","actor":"` + oldActor + `","object":"` + oldActor + `","target":"` + newActor + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/ap/users/member/inbox", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	a.actor(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, w.Code)
+	}
+	followers, err := a.db.ActivityPubFollowers(user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(followers) != 1 || followers[0].Actor != oldActor || followers[0].Inbox != "https://old.example/inbox" {
+		t.Fatalf("expected original follower unchanged, got %#v", followers)
+	}
+}
+
 func parseTestRSAPublicKey(t *testing.T, publicPEM string) *rsa.PublicKey {
 	t.Helper()
 	block, _ := pem.Decode([]byte(publicPEM))
