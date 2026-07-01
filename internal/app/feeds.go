@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"igrec.net/igrec/internal/activitypub"
 	"igrec.net/igrec/internal/store"
 	"igrec.net/igrec/internal/word"
 )
@@ -118,6 +119,10 @@ func (a *App) profile(w http.ResponseWriter, r *http.Request) {
 		post, err := postByPathSegment(a.db, user.Username, value)
 		if err != nil {
 			http.NotFound(w, r)
+			return
+		}
+		if wantsActivityPub(r) {
+			writeJSON(w, "application/activity+json; charset=utf-8", activitypub.Note(a.cfg.BaseURL, post))
 			return
 		}
 		data := map[string]any{"Post": a.styledPostViews([]store.Post{post}, user.TimestampPreference)[0], "User": user}
@@ -298,6 +303,12 @@ func absoluteURL(baseURL, value string) string {
 		return value
 	}
 	return strings.TrimRight(baseURL, "/") + "/" + strings.TrimLeft(value, "/")
+}
+
+func wantsActivityPub(r *http.Request) bool {
+	accept := r.Header.Get("Accept")
+	return strings.Contains(accept, "application/activity+json") ||
+		strings.Contains(accept, `application/ld+json; profile="https://www.w3.org/ns/activitystreams"`)
 }
 
 func parseIntQuery(r *http.Request, key string) int64 {

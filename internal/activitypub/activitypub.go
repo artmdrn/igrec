@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"igrec.net/igrec/internal/store"
@@ -47,11 +48,11 @@ func Actor(baseURL string, user store.User, publicKeyPEM string) map[string]any 
 }
 
 func Note(baseURL string, post store.Post) map[string]any {
-	postURL := profileURL(baseURL, post.Username) + "/" + url.PathEscape(post.Word)
+	postURL := PostURL(baseURL, post)
 	actor := actorID(baseURL, post.Username)
 	note := map[string]any{
 		"@context":     "https://www.w3.org/ns/activitystreams",
-		"id":           fmt.Sprintf("%s#%d", postURL, post.ID),
+		"id":           postURL,
 		"type":         "Note",
 		"attributedTo": actor,
 		"content":      `<p><a href="` + html.EscapeString(postURL) + `">` + html.EscapeString(post.Word) + `</a></p>`,
@@ -71,7 +72,7 @@ func Note(baseURL string, post store.Post) map[string]any {
 		note["attachment"] = []map[string]any{{
 			"type":      "Image",
 			"mediaType": "image/png",
-			"url":       strings.TrimRight(baseURL, "/") + "/og/@" + url.PathEscape(post.Username) + "/" + url.PathEscape(post.Word) + ".png",
+			"url":       PreviewURL(baseURL, post),
 			"name":      post.Word,
 		}}
 	}
@@ -83,7 +84,7 @@ func Create(baseURL string, post store.Post) map[string]any {
 	note := Note(baseURL, post)
 	return map[string]any{
 		"@context":  "https://www.w3.org/ns/activitystreams",
-		"id":        fmt.Sprintf("%s/activity#%d", note["id"], post.ID),
+		"id":        fmt.Sprintf("%s/activity", note["id"]),
 		"type":      "Create",
 		"actor":     actor,
 		"published": post.CreatedAt,
@@ -94,10 +95,10 @@ func Create(baseURL string, post store.Post) map[string]any {
 }
 
 func WebFinger(baseURL string, username string) map[string]any {
-	host := strings.TrimPrefix(strings.TrimPrefix(baseURL, "https://"), "http://")
+	host := webFingerHost(baseURL)
 	return map[string]any{
 		"subject": "acct:" + username + "@" + host,
-		"aliases": []string{profileURL(baseURL, username)},
+		"aliases": []string{actorID(baseURL, username), profileURL(baseURL, username)},
 		"links": []map[string]string{
 			{"rel": "self", "type": "application/activity+json", "href": actorID(baseURL, username)},
 		},
@@ -112,9 +113,29 @@ func profileURL(baseURL, username string) string {
 	return strings.TrimRight(baseURL, "/") + "/@" + url.PathEscape(username)
 }
 
+func PostURL(baseURL string, post store.Post) string {
+	return profileURL(baseURL, post.Username) + "/" + url.PathEscape(postSlug(post))
+}
+
+func PreviewURL(baseURL string, post store.Post) string {
+	return strings.TrimRight(baseURL, "/") + "/og/@" + url.PathEscape(post.Username) + "/" + url.PathEscape(postSlug(post)) + ".png"
+}
+
 func absoluteURL(baseURL, value string) string {
 	if strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://") {
 		return value
 	}
 	return strings.TrimRight(baseURL, "/") + "/" + strings.TrimLeft(value, "/")
+}
+
+func postSlug(post store.Post) string {
+	return strconv.FormatInt(post.ID, 10) + "-" + post.Word
+}
+
+func webFingerHost(baseURL string) string {
+	parsed, err := url.Parse(baseURL)
+	if err == nil && parsed.Host != "" {
+		return parsed.Host
+	}
+	return strings.Trim(strings.TrimPrefix(strings.TrimPrefix(baseURL, "https://"), "http://"), "/")
 }

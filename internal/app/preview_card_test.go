@@ -62,6 +62,37 @@ func TestPostPageUsesGeneratedPreviewForImagelessPost(t *testing.T) {
 	}
 }
 
+func TestPostPageServesActivityPubNote(t *testing.T) {
+	a := testApp(t)
+	user, err := a.db.CreateUser("mazine", "mazine@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.CreatePost(user.ID, "Лекторий", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/@mazine/1-%D0%9B%D0%B5%D0%BA%D1%82%D0%BE%D1%80%D0%B8%D0%B9", nil)
+	req.Header.Set("Accept", "application/activity+json")
+	w := httptest.NewRecorder()
+	a.profile(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, resp.StatusCode)
+	}
+	if got := resp.Header.Get("Content-Type"); got != "application/activity+json; charset=utf-8" {
+		t.Fatalf("unexpected content type %q", got)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, `"type":"Note"`) {
+		t.Fatalf("expected ActivityPub Note, got %s", body)
+	}
+	if !strings.Contains(body, `"id":"http://localhost:8080/@mazine/1-`) {
+		t.Fatalf("expected canonical post object id, got %s", body)
+	}
+}
+
 func TestPostPageShowsWordEchoes(t *testing.T) {
 	a := testApp(t)
 	first, err := a.db.CreateUser("first", "first@example.com")

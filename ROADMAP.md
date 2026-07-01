@@ -54,9 +54,9 @@ Done when:
 
 - [x] Add actor key generation and HTTP signatures.
 - [x] Implement inbox handling for Follow, Undo Follow, Accept, Reject, and Move.
-- Store followers and follower inboxes.
-- Deliver Create/Note activities to follower inboxes.
-- Improve WebFinger, actor, outbox, and object URLs for compatibility.
+- [x] Store followers and follower inboxes.
+- [x] Deliver Create/Note activities to follower inboxes.
+- [x] Improve WebFinger, actor, outbox, and object URLs for compatibility.
 
 Deferred:
 

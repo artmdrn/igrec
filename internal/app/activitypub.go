@@ -124,9 +124,15 @@ func (a *App) actor(w http.ResponseWriter, r *http.Request) {
 		}
 		items := make([]any, 0, len(posts))
 		for _, post := range posts {
-			items = append(items, activitypub.Note(a.cfg.BaseURL, post))
+			items = append(items, activitypub.Create(a.cfg.BaseURL, post))
 		}
-		writeJSON(w, "application/activity+json; charset=utf-8", map[string]any{"@context": "https://www.w3.org/ns/activitystreams", "type": "OrderedCollection", "orderedItems": items})
+		writeJSON(w, "application/activity+json; charset=utf-8", map[string]any{
+			"@context":     "https://www.w3.org/ns/activitystreams",
+			"id":           activitypubActorID(a.cfg.BaseURL, user.Username) + "/outbox",
+			"type":         "OrderedCollection",
+			"totalItems":   len(items),
+			"orderedItems": items,
+		})
 		return
 	}
 	publicKey, err := a.activityPubPublicKey(user)

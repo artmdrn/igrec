@@ -159,6 +159,92 @@ func TestActivityPubFollowingCollection(t *testing.T) {
 	}
 }
 
+func TestActivityPubOutboxUsesCreateActivities(t *testing.T) {
+	a := testApp(t)
+	user, err := a.db.CreateUser("cc00ffee", "cc@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.db.CreatePost(user.ID, "BORJOMI", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/ap/users/cc00ffee/outbox", nil)
+	w := httptest.NewRecorder()
+	a.actor(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+	var outbox map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &outbox); err != nil {
+		t.Fatal(err)
+	}
+	if got := outbox["id"]; got != "http://localhost:8080/ap/users/cc00ffee/outbox" {
+		t.Fatalf("unexpected outbox id %#v", got)
+	}
+	if got := outbox["totalItems"]; got != float64(1) {
+		t.Fatalf("unexpected totalItems %#v", got)
+	}
+	items, ok := outbox["orderedItems"].([]any)
+	if !ok || len(items) != 1 {
+		t.Fatalf("expected one ordered item, got %#v", outbox["orderedItems"])
+	}
+	create, ok := items[0].(map[string]any)
+	if !ok || create["type"] != "Create" {
+		t.Fatalf("expected Create activity, got %#v", items[0])
+	}
+	object, ok := create["object"].(map[string]any)
+	if !ok || object["type"] != "Note" {
+		t.Fatalf("expected Note object, got %#v", create["object"])
+	}
+	if got, _ := object["id"].(string); !strings.Contains(got, "/@cc00ffee/") || !strings.Contains(got, "-BORJOMI") {
+		t.Fatalf("unexpected object id %#v", object["id"])
+	}
+}
+
+func TestDeliverPostQueuesCreateForFollowerInbox(t *testing.T) {
+	a := testApp(t)
+	user, err := a.db.CreateUser("cc00ffee", "cc@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.UpsertActivityPubFollower(user.ID, "https://remote.example/users/follower", "http://127.0.0.1/inbox"); err != nil {
+		t.Fatal(err)
+	}
+	post, err := a.db.CreatePost(user.ID, "BORJOMI", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	a.deliverPost(post)
+
+	deliveries, err := a.db.DueActivityPubDeliveries(farFuture(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(deliveries) != 1 {
+		t.Fatalf("expected one queued delivery, got %#v", deliveries)
+	}
+	if got := deliveries[0].Inbox; got != "http://127.0.0.1/inbox" {
+		t.Fatalf("unexpected inbox %q", got)
+	}
+	var create map[string]any
+	if err := json.Unmarshal(deliveries[0].Activity, &create); err != nil {
+		t.Fatal(err)
+	}
+	if create["type"] != "Create" {
+		t.Fatalf("expected Create activity, got %#v", create)
+	}
+	object, ok := create["object"].(map[string]any)
+	if !ok || object["type"] != "Note" {
+		t.Fatalf("expected Note object, got %#v", create["object"])
+	}
+	if got, _ := object["id"].(string); !strings.Contains(got, "/@cc00ffee/") || !strings.Contains(got, "-BORJOMI") {
+		t.Fatalf("unexpected object id %#v", object["id"])
+	}
+}
+
 func TestStartAccountMigrationQueuesMoveAndRedirectsActor(t *testing.T) {
 	a := testApp(t)
 	user, err := a.db.CreateUser("member", "member@example.com")
