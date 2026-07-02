@@ -73,7 +73,7 @@ Done when:
 - Add IndieAuth login for users who own a domain.
 - Add Mastodon OAuth login for existing fediverse users.
 - Link multiple auth identities to one igrec account.
-- Add rel=me verification links on profiles.
+- [x] Add rel=me verification links on profiles.
 
 Done when:
 
