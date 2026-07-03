@@ -287,6 +287,27 @@ func TestRelMeLinksRoundTrip(t *testing.T) {
 	}
 }
 
+func TestUserByDomainFindsSingleLinkedAccount(t *testing.T) {
+	db := testDB(t)
+	user, err := db.CreateUser("domainuser", "domain@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`update users set domain = ? where id = ?`, "Example.COM", user.ID); err != nil {
+		t.Fatal(err)
+	}
+	found, err := db.UserByDomain("example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found.ID != user.ID {
+		t.Fatalf("expected user %d, got %d", user.ID, found.ID)
+	}
+	if _, err := db.UserByDomain("missing.example"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected missing domain to return sql.ErrNoRows, got %v", err)
+	}
+}
+
 func TestCreatePostWithFocusStoresClampedFocus(t *testing.T) {
 	db := testDB(t)
 	user, err := db.CreateUser("photo", "photo@example.com")

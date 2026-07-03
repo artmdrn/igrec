@@ -408,6 +408,32 @@ func (db *DB) UserByEmail(email string) (User, error) {
 	return user, err
 }
 
+func (db *DB) UserByDomain(domain string) (User, error) {
+	domain = strings.ToLower(strings.TrimSpace(domain))
+	rows, err := db.Query(`select id, username, domain, email, fediverse_acct, email_opt_in, timestamp_preference, migration_target, created_at from users where lower(domain) = lower(?) and domain != '' order by id asc limit 2`, domain)
+	if err != nil {
+		return User{}, err
+	}
+	defer rows.Close()
+
+	var users []User
+	for rows.Next() {
+		var user User
+		if err := rows.Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt); err != nil {
+			return User{}, err
+		}
+		user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
+		users = append(users, user)
+	}
+	if err := rows.Err(); err != nil {
+		return User{}, err
+	}
+	if len(users) != 1 {
+		return User{}, sql.ErrNoRows
+	}
+	return users[0], nil
+}
+
 func (db *DB) UserBySessionHash(tokenHash string) (User, error) {
 	var user User
 	err := db.QueryRow(`

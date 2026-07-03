@@ -12,6 +12,12 @@
     <label>email <input type="email" name="email" value="{{.Email}}" autocomplete="email" required></label>
     <button type="submit">email me a login link</button>
   </form>
+  <form method="post" action="/auth/indieauth/start">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    <input type="hidden" name="next" value="{{.Next}}">
+    <label>domain <input type="url" name="me" value="{{.Me}}" autocomplete="url" placeholder="https://example.com"></label>
+    <button type="submit">sign in with IndieAuth</button>
+  </form>
   <div class="auth-alt">
     <p class="system-message" data-passkey-status></p>
     <button type="button" class="button" data-passkey="login">use a passkey instead</button>
