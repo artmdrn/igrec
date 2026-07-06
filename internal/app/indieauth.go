@@ -108,7 +108,10 @@ func (a *App) indieAuthCallback(w http.ResponseWriter, r *http.Request) {
 		a.render(w, r, "login.html", map[string]any{"Error": "IndieAuth returned an invalid profile URL"})
 		return
 	}
-	user, err := a.db.UserByDomain(verified.Host)
+	user, err := a.db.UserByAuthIdentity("indieauth_domain", verified.Host)
+	if err != nil {
+		user, err = a.db.UserByDomain(verified.Host)
+	}
 	if err != nil {
 		a.render(w, r, "login.html", map[string]any{"Error": "no igrec account is linked to " + verified.Host})
 		return

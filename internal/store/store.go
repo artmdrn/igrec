@@ -181,6 +181,15 @@ create table if not exists login_tokens (
   expires_at datetime not null,
   used_at datetime
 );
+create table if not exists auth_identities (
+  id integer primary key autoincrement,
+  user_id integer not null references users(id),
+  provider text not null,
+  subject text not null,
+  created_at datetime not null default current_timestamp,
+  updated_at datetime not null default current_timestamp,
+  unique(provider, subject)
+);
 create table if not exists email_change_tokens (
   token_hash text primary key,
   user_id integer not null references users(id),
@@ -219,6 +228,7 @@ create index if not exists posts_user_word_idx on posts(user_id, word);
 create unique index if not exists users_email_unique_idx on users(email) where email != '';
 create index if not exists sessions_user_idx on sessions(user_id);
 create index if not exists login_tokens_user_idx on login_tokens(user_id);
+create index if not exists auth_identities_user_idx on auth_identities(user_id, provider);
 create index if not exists email_change_tokens_user_idx on email_change_tokens(user_id);
 create index if not exists passkeys_user_idx on passkeys(user_id);
 create index if not exists webauthn_sessions_expires_idx on webauthn_sessions(expires_at);
@@ -307,6 +317,14 @@ create index if not exists activitypub_deliveries_due_idx on activitypub_deliver
 create index if not exists activitypub_deliveries_user_idx on activitypub_deliveries(user_id);
 `
 	if _, err := db.Exec(schema); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`insert or ignore into auth_identities(user_id, provider, subject)
+select id, 'email', lower(email) from users where email != ''`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`insert or ignore into auth_identities(user_id, provider, subject)
+select id, 'indieauth_domain', lower(domain) from users where domain != ''`); err != nil {
 		return err
 	}
 	if err := db.ensureColumn("users", "timestamp_preference", "text not null default 'smart'"); err != nil {
@@ -434,6 +452,51 @@ func (db *DB) UserByDomain(domain string) (User, error) {
 	return users[0], nil
 }
 
+func normalizeAuthIdentity(provider, subject string) (string, string) {
+	return strings.ToLower(strings.TrimSpace(provider)), strings.ToLower(strings.TrimSpace(subject))
+}
+
+func (db *DB) LinkAuthIdentity(userID int64, provider, subject string) error {
+	provider, subject = normalizeAuthIdentity(provider, subject)
+	if provider == "" || subject == "" {
+		return errors.New("auth identity provider and subject are required")
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`
+insert into auth_identities(user_id, provider, subject)
+values(?, ?, ?)
+on conflict(provider, subject) do update set updated_at = current_timestamp
+where auth_identities.user_id = excluded.user_id`, userID, provider, subject); err != nil {
+		return err
+	}
+	var linkedUserID int64
+	if err := tx.QueryRow(`select user_id from auth_identities where provider = ? and subject = ?`, provider, subject).Scan(&linkedUserID); err != nil {
+		return err
+	}
+	if linkedUserID != userID {
+		return errors.New("auth identity is linked to another user")
+	}
+	return tx.Commit()
+}
+
+func (db *DB) UserByAuthIdentity(provider, subject string) (User, error) {
+	provider, subject = normalizeAuthIdentity(provider, subject)
+	var user User
+	err := db.QueryRow(`
+select users.id, users.username, users.domain, users.email, users.fediverse_acct, users.email_opt_in, users.timestamp_preference, users.migration_target, users.created_at
+from auth_identities
+join users on users.id = auth_identities.user_id
+where auth_identities.provider = ? and auth_identities.subject = ?`, provider, subject).
+		Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt)
+	user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
+	return user, err
+}
+
 func (db *DB) UserBySessionHash(tokenHash string) (User, error) {
 	var user User
 	err := db.QueryRow(`
@@ -446,11 +509,25 @@ where sessions.token_hash = ? and sessions.expires_at > current_timestamp`, toke
 }
 
 func (db *DB) CreateUser(username, email string) (User, error) {
-	res, err := db.Exec(`insert into users(username, email, timestamp_preference) values(?, ?, 'smart')`, username, strings.ToLower(strings.TrimSpace(email)))
+	email = strings.ToLower(strings.TrimSpace(email))
+	tx, err := db.Begin()
+	if err != nil {
+		return User{}, err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(`insert into users(username, email, timestamp_preference) values(?, ?, 'smart')`, username, email)
 	if err != nil {
 		return User{}, err
 	}
 	id, _ := res.LastInsertId()
+	if email != "" {
+		if _, err := tx.Exec(`insert into auth_identities(user_id, provider, subject) values(?, 'email', ?)`, id, email); err != nil {
+			return User{}, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return User{}, err
+	}
 	var user User
 	err = db.QueryRow(`select id, username, domain, email, fediverse_acct, email_opt_in, timestamp_preference, migration_target, created_at from users where id = ?`, id).
 		Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt)
@@ -748,6 +825,12 @@ where token_hash = ? and used_at is null and expires_at > current_timestamp`, to
 	if _, err := tx.Exec(`update users set email = ? where id = ?`, email, userID); err != nil {
 		return User{}, err
 	}
+	if _, err := tx.Exec(`delete from auth_identities where user_id = ? and provider = 'email'`, userID); err != nil {
+		return User{}, err
+	}
+	if _, err := tx.Exec(`insert into auth_identities(user_id, provider, subject) values(?, 'email', lower(?))`, userID, email); err != nil {
+		return User{}, err
+	}
 	if _, err := tx.Exec(`update email_change_tokens set used_at = current_timestamp where token_hash = ?`, tokenHash); err != nil {
 		return User{}, err
 	}
@@ -1032,6 +1115,7 @@ func (db *DB) DeleteUser(userID int64) error {
 	statements := []string{
 		`delete from sessions where user_id = ?`,
 		`delete from login_tokens where user_id = ?`,
+		`delete from auth_identities where user_id = ?`,
 		`delete from email_change_tokens where user_id = ?`,
 		`delete from passkeys where user_id = ?`,
 		`delete from webauthn_sessions where user_id = ?`,

@@ -93,7 +93,7 @@ func TestIndieAuthCallbackStartsSessionForVerifiedDomain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.db.Exec(`update users set domain = ? where id = ?`, "example.com", user.ID); err != nil {
+	if err := a.db.LinkAuthIdentity(user.ID, "indieauth_domain", "example.com"); err != nil {
 		t.Fatal(err)
 	}
 

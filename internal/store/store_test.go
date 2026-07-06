@@ -60,6 +60,9 @@ func TestDeleteUserRemovesDependentRecords(t *testing.T) {
 	if err := db.CreateLoginToken("login-hash", user.ID, time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
+	if err := db.LinkAuthIdentity(user.ID, "indieauth_domain", "delete.example"); err != nil {
+		t.Fatal(err)
+	}
 	if err := db.CreateEmailChangeToken("email-hash", user.ID, "next@example.com", time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
@@ -305,6 +308,79 @@ func TestUserByDomainFindsSingleLinkedAccount(t *testing.T) {
 	}
 	if _, err := db.UserByDomain("missing.example"); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("expected missing domain to return sql.ErrNoRows, got %v", err)
+	}
+}
+
+func TestAuthIdentitiesLinkMultipleProviders(t *testing.T) {
+	db := testDB(t)
+	user, err := db.CreateUser("linked", "linked@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.LinkAuthIdentity(user.ID, "IndieAuth_Domain", "Example.COM"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.LinkAuthIdentity(user.ID, "mastodon", "alice@mastodon.example"); err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct {
+		provider string
+		subject  string
+	}{
+		{"email", "LINKED@EXAMPLE.COM"},
+		{"indieauth_domain", "example.com"},
+		{"mastodon", "ALICE@MASTODON.EXAMPLE"},
+	} {
+		found, err := db.UserByAuthIdentity(tt.provider, tt.subject)
+		if err != nil {
+			t.Fatalf("lookup %s/%s: %v", tt.provider, tt.subject, err)
+		}
+		if found.ID != user.ID {
+			t.Fatalf("expected user %d, got %d", user.ID, found.ID)
+		}
+	}
+
+	other, err := db.CreateUser("otherlinked", "otherlinked@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.LinkAuthIdentity(other.ID, "mastodon", "alice@mastodon.example"); err == nil {
+		t.Fatal("expected linked identity conflict")
+	}
+	found, err := db.UserByAuthIdentity("mastodon", "alice@mastodon.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found.ID != user.ID {
+		t.Fatalf("expected identity to remain linked to %d, got %d", user.ID, found.ID)
+	}
+}
+
+func TestUseEmailChangeTokenReplacesEmailIdentity(t *testing.T) {
+	db := testDB(t)
+	user, err := db.CreateUser("emailchange", "old@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CreateEmailChangeToken("email-change-hash", user.ID, "New@Example.COM", time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := db.UseEmailChangeToken("email-change-hash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Email != "new@example.com" {
+		t.Fatalf("expected normalized email, got %q", updated.Email)
+	}
+	if _, err := db.UserByAuthIdentity("email", "old@example.com"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected old email identity to be removed, got %v", err)
+	}
+	found, err := db.UserByAuthIdentity("email", "new@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found.ID != user.ID {
+		t.Fatalf("expected new email identity for user %d, got %d", user.ID, found.ID)
 	}
 }
 
