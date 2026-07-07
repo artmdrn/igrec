@@ -497,6 +497,35 @@ where auth_identities.provider = ? and auth_identities.subject = ?`, provider, s
 	return user, err
 }
 
+func (db *DB) UserByFediverseAcct(acct string) (User, error) {
+	acct = strings.ToLower(strings.TrimSpace(acct))
+	rows, err := db.Query(`select id, username, domain, email, fediverse_acct, email_opt_in, timestamp_preference, migration_target, created_at from users where lower(fediverse_acct) = lower(?) and fediverse_acct != '' order by id asc limit 2`, acct)
+	if err != nil {
+		return User{}, err
+	}
+	defer rows.Close()
+
+	var users []User
+	for rows.Next() {
+		var user User
+		if err := rows.Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt); err != nil {
+			return User{}, err
+		}
+		user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
+		users = append(users, user)
+	}
+	if err := rows.Err(); err != nil {
+		return User{}, err
+	}
+	if len(users) == 0 {
+		return User{}, sql.ErrNoRows
+	}
+	if len(users) > 1 {
+		return User{}, errors.New("multiple accounts use that fediverse handle")
+	}
+	return users[0], nil
+}
+
 func (db *DB) UserBySessionHash(tokenHash string) (User, error) {
 	var user User
 	err := db.QueryRow(`

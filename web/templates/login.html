@@ -18,6 +18,12 @@
     <label>domain <input type="url" name="me" value="{{.Me}}" autocomplete="url" placeholder="https://example.com"></label>
     <button type="submit">sign in with IndieAuth</button>
   </form>
+  <form method="post" action="/auth/mastodon/start">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    <input type="hidden" name="next" value="{{.Next}}">
+    <label>Mastodon instance <input type="text" name="instance" value="{{.MastodonInstance}}" autocomplete="url" placeholder="mastodon.social"></label>
+    <button type="submit">sign in with Mastodon</button>
+  </form>
   <div class="auth-alt">
     <p class="system-message" data-passkey-status></p>
     <button type="button" class="button" data-passkey="login">use a passkey instead</button>

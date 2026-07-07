@@ -60,6 +60,8 @@ func New(cfg Config, db *store.DB) http.Handler {
 	mux.HandleFunc("/auth/email", app.confirmEmail)
 	mux.HandleFunc("/auth/indieauth/start", app.indieAuthStart)
 	mux.HandleFunc("/auth/indieauth/callback", app.indieAuthCallback)
+	mux.HandleFunc("/auth/mastodon/start", app.mastodonStart)
+	mux.HandleFunc("/auth/mastodon/callback", app.mastodonCallback)
 	mux.HandleFunc("/auth/passkeys/register/options", app.passkeyRegisterOptions)
 	mux.HandleFunc("/auth/passkeys/register", app.passkeyRegister)
 	mux.HandleFunc("/auth/passkeys/login/options", app.passkeyLoginOptions)

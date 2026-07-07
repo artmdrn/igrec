@@ -356,6 +356,38 @@ func TestAuthIdentitiesLinkMultipleProviders(t *testing.T) {
 	}
 }
 
+func TestUserByFediverseAcctRequiresSingleLinkedAccount(t *testing.T) {
+	db := testDB(t)
+	user, err := db.CreateUser("fediverseuser", "fediverse@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.UpdateSettingsProfile(user.ID, "smart", true, "@alice@mastodon.example", "", nil); err != nil {
+		t.Fatal(err)
+	}
+	found, err := db.UserByFediverseAcct("@ALICE@MASTODON.EXAMPLE")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found.ID != user.ID {
+		t.Fatalf("expected user %d, got %d", user.ID, found.ID)
+	}
+	if _, err := db.UserByFediverseAcct("@missing@mastodon.example"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected missing fediverse account to return sql.ErrNoRows, got %v", err)
+	}
+
+	other, err := db.CreateUser("fediverseother", "fediverseother@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.UpdateSettingsProfile(other.ID, "smart", true, "@alice@mastodon.example", "", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.UserByFediverseAcct("@alice@mastodon.example"); err == nil {
+		t.Fatal("expected duplicate fediverse handle error")
+	}
+}
+
 func TestUseEmailChangeTokenReplacesEmailIdentity(t *testing.T) {
 	db := testDB(t)
 	user, err := db.CreateUser("emailchange", "old@example.com")
