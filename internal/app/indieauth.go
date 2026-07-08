@@ -29,6 +29,10 @@ func (a *App) indieAuthStart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
+	if !a.allowAuthRate("indieauth-start:ip:"+clientKey(r), 20, 10*time.Minute) {
+		http.Error(w, "rate limited", http.StatusTooManyRequests)
+		return
+	}
 
 	me, err := normalizeIndieAuthMe(r.FormValue("me"))
 	if err != nil {
@@ -66,6 +70,10 @@ func (a *App) indieAuthStart(w http.ResponseWriter, r *http.Request) {
 func (a *App) indieAuthCallback(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !a.allowAuthRate("indieauth-callback:ip:"+clientKey(r), 60, 10*time.Minute) {
+		http.Error(w, "rate limited", http.StatusTooManyRequests)
 		return
 	}
 	next := "/write"

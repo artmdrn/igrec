@@ -56,6 +56,10 @@ func (a *App) passkeyRegisterOptions(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "login required", http.StatusUnauthorized)
 		return
 	}
+	if !a.allowAuthRate("passkey-register-options:user:"+fmt.Sprint(user.ID), 20, time.Hour) || !a.allowAuthRate("passkey-register-options:ip:"+clientKey(r), 60, time.Hour) {
+		http.Error(w, "rate limited", http.StatusTooManyRequests)
+		return
+	}
 	web, err := a.webAuthn()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -90,6 +94,10 @@ func (a *App) passkeyRegister(w http.ResponseWriter, r *http.Request) {
 	user, ok := a.currentUser(r)
 	if !ok {
 		http.Error(w, "login required", http.StatusUnauthorized)
+		return
+	}
+	if !a.allowAuthRate("passkey-register:user:"+fmt.Sprint(user.ID), 20, time.Hour) || !a.allowAuthRate("passkey-register:ip:"+clientKey(r), 60, time.Hour) {
+		http.Error(w, "rate limited", http.StatusTooManyRequests)
 		return
 	}
 	web, err := a.webAuthn()
@@ -128,6 +136,10 @@ func (a *App) passkeyLoginOptions(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if !a.allowAuthRate("passkey-login-options:ip:"+clientKey(r), 30, 10*time.Minute) {
+		http.Error(w, "rate limited", http.StatusTooManyRequests)
+		return
+	}
 	web, err := a.webAuthn()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -148,6 +160,10 @@ func (a *App) passkeyLoginOptions(w http.ResponseWriter, r *http.Request) {
 func (a *App) passkeyLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !a.allowAuthRate("passkey-login:ip:"+clientKey(r), 60, 10*time.Minute) {
+		http.Error(w, "rate limited", http.StatusTooManyRequests)
 		return
 	}
 	web, err := a.webAuthn()

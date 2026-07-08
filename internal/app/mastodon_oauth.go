@@ -27,6 +27,10 @@ func (a *App) mastodonStart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
+	if !a.allowAuthRate("mastodon-start:ip:"+clientKey(r), 20, 10*time.Minute) {
+		http.Error(w, "rate limited", http.StatusTooManyRequests)
+		return
+	}
 	instance, err := normalizeMastodonInstance(r.FormValue("instance"))
 	if err != nil {
 		a.render(w, r, "login.html", a.withCSRF(w, r, map[string]any{"Error": err.Error(), "MastodonInstance": r.FormValue("instance"), "Next": safeNext(r.FormValue("next"))}))
@@ -66,6 +70,10 @@ func (a *App) mastodonStart(w http.ResponseWriter, r *http.Request) {
 func (a *App) mastodonCallback(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !a.allowAuthRate("mastodon-callback:ip:"+clientKey(r), 60, 10*time.Minute) {
+		http.Error(w, "rate limited", http.StatusTooManyRequests)
 		return
 	}
 	next := "/write"

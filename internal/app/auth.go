@@ -35,6 +35,10 @@ func (a *App) join(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
+		if !a.allowAuthRate("join:ip:"+clientKey(r), 20, time.Hour) {
+			http.Error(w, "rate limited", http.StatusTooManyRequests)
+			return
+		}
 		inviteCode := strings.TrimSpace(r.FormValue("invite"))
 		username, usernameErr := normalizeSignupUsername(r.FormValue("username"))
 		email := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
@@ -92,8 +96,12 @@ func (a *App) login(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
+		if !a.allowAuthRate("login:ip:"+clientKey(r), 30, 10*time.Minute) {
+			http.Error(w, "rate limited", http.StatusTooManyRequests)
+			return
+		}
 		email := strings.ToLower(strings.TrimSpace(r.FormValue("email")))
-		if !a.allowRate("login:"+clientKey(r)+":"+email, 5, 10*time.Minute) {
+		if !a.allowAuthRate("login-email:"+clientKey(r)+":"+email, 5, 10*time.Minute) {
 			http.Error(w, "too many login emails", http.StatusTooManyRequests)
 			return
 		}
@@ -126,6 +134,10 @@ func (a *App) login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) magic(w http.ResponseWriter, r *http.Request) {
+	if !a.allowAuthRate("magic:ip:"+clientKey(r), 60, 10*time.Minute) {
+		http.Error(w, "rate limited", http.StatusTooManyRequests)
+		return
+	}
 	token := r.URL.Query().Get("token")
 	if token == "" {
 		http.NotFound(w, r)
@@ -144,6 +156,10 @@ func (a *App) magic(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) confirmEmail(w http.ResponseWriter, r *http.Request) {
+	if !a.allowAuthRate("confirm-email:ip:"+clientKey(r), 60, 10*time.Minute) {
+		http.Error(w, "rate limited", http.StatusTooManyRequests)
+		return
+	}
 	token := r.URL.Query().Get("token")
 	if token == "" {
 		http.NotFound(w, r)
@@ -211,6 +227,10 @@ func (a *App) validCSRF(r *http.Request) bool {
 		return false
 	}
 	return subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(formToken)) == 1
+}
+
+func (a *App) allowAuthRate(key string, limit int, window time.Duration) bool {
+	return a.allowRate("auth:"+key, limit, window)
 }
 
 func (a *App) currentUser(r *http.Request) (store.User, bool) {

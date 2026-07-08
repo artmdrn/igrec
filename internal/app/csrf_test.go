@@ -30,6 +30,7 @@ func testApp(t *testing.T) *App {
 		db:             db,
 		templates:      parseTemplates(),
 		operatorEmails: map[string]struct{}{},
+		limiter:        &rateLimiter{buckets: make(map[string]rateBucket)},
 	}
 }
 
