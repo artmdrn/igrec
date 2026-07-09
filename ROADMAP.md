@@ -113,8 +113,8 @@ Done when:
 
 - Add HTTPS origin certificate on Oracle.
 - Rotate all keys that appeared in chat.
-- Add backups for SQLite.
-- Add restore drill documentation.
+- [x] Add backups for SQLite.
+- [x] Add restore drill documentation.
 - [x] Add rate limits for posting, inbound email, auth, and ActivityPub inbox.
 - Add basic moderation/operator controls for invite revocation and account suspension.
 - Extend CI with integration tests and deployment rollback checks.
