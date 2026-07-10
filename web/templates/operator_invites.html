@@ -1,14 +1,52 @@
 {{template "head" .}}
 <main class="settings">
-  <form method="post" action="/operator/invites">
-    {{if .Error}}<p class="error system-message">{{.Error}}</p>{{end}}
-    {{if .Notice}}<p class="system-message">{{.Notice}}</p>{{end}}
-    {{if .InviteLink}}<p class="invite-line"><a href="{{.InviteLink}}">{{.InviteLink}}</a></p>{{end}}
-    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
-    <button type="submit">make invite</button>
+  {{if .Error}}<p class="error system-message">{{.Error}}</p>{{end}}
+  {{if .Notice}}<p class="system-message">{{.Notice}}</p>{{end}}
+  {{if .InviteLink}}<p class="invite-line"><a href="{{.InviteLink}}">{{.InviteLink}}</a></p>{{end}}
+
+  <section class="settings-section">
+    <h2>invites</h2>
+    <form method="post" action="/operator/invites">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <button type="submit">make invite</button>
+    </form>
     {{range .Invites}}
-      <p class="invite-line">{{if .Used}}used {{end}}<a href="{{.Link}}">{{.Link}}</a></p>
+      <div class="token-row">
+        <p class="invite-line">{{if .Used}}used {{end}}<a href="{{.Link}}">{{.Link}}</a></p>
+        {{if not .Used}}
+          <form method="post" action="/operator/invites">
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+            <input type="hidden" name="action" value="revoke-invite">
+            <input type="hidden" name="invite_code" value="{{.Code}}">
+            <button type="submit">revoke</button>
+          </form>
+        {{end}}
+      </div>
+    {{else}}
+      <p class="muted">no invite links made yet.</p>
     {{end}}
-  </form>
+  </section>
+
+  <section class="settings-section">
+    <h2>accounts</h2>
+    {{range .Users}}
+      <div class="token-row">
+        <p class="invite-line">{{if .Suspended}}suspended {{end}}<a href="/@{{.Username}}">@{{.Username}}</a> · {{.Email}}</p>
+        {{if ne .ID $.OperatorUserID}}
+          <form method="post" action="/operator/invites">
+            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+            <input type="hidden" name="user_id" value="{{.ID}}">
+            {{if .Suspended}}
+              <button type="submit" name="action" value="unsuspend-user">unsuspend</button>
+            {{else}}
+              <button type="submit" name="action" value="suspend-user">suspend</button>
+            {{end}}
+          </form>
+        {{end}}
+      </div>
+    {{else}}
+      <p class="muted">no accounts yet.</p>
+    {{end}}
+  </section>
 </main>
 {{template "foot" .}}

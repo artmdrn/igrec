@@ -27,8 +27,9 @@ type User struct {
 	FediverseAcct       string
 	EmailOptIn          bool
 	TimestampPreference string
-	CreatedAt           time.Time
 	MigrationTarget     string
+	SuspendedAt         sql.NullTime
+	CreatedAt           time.Time
 }
 
 type Post struct {
@@ -48,6 +49,22 @@ type Invite struct {
 	UsedBy    sql.NullInt64
 	CreatedAt time.Time
 	UsedAt    sql.NullTime
+}
+
+type userScanner interface {
+	Scan(dest ...any) error
+}
+
+const (
+	userColumns      = `id, username, domain, email, fediverse_acct, email_opt_in, timestamp_preference, migration_target, suspended_at, created_at`
+	usersColumns     = `users.id, users.username, users.domain, users.email, users.fediverse_acct, users.email_opt_in, users.timestamp_preference, users.migration_target, users.suspended_at, users.created_at`
+	activeUserFilter = `users.suspended_at is null`
+)
+
+func scanUser(scanner userScanner, user *User) error {
+	err := scanner.Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.SuspendedAt, &user.CreatedAt)
+	user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
+	return err
 }
 
 type DailyEmailCandidate struct {
@@ -154,6 +171,7 @@ create table if not exists users (
   email_opt_in integer not null default 0,
   timestamp_preference text not null default 'smart',
   migration_target text not null default '',
+  suspended_at datetime,
   created_at datetime not null default current_timestamp
 );
 create table if not exists invites (
@@ -330,6 +348,9 @@ select id, 'indieauth_domain', lower(domain) from users where domain != ''`); er
 	if err := db.ensureColumn("users", "timestamp_preference", "text not null default 'smart'"); err != nil {
 		return err
 	}
+	if err := db.ensureColumn("users", "suspended_at", "datetime"); err != nil {
+		return err
+	}
 	if err := db.ensureColumn("invites", "inviter_id", "integer references users(id)"); err != nil {
 		return err
 	}
@@ -368,10 +389,8 @@ func (db *DB) ensureColumn(table, column, definition string) error {
 
 func (db *DB) EnsureLocalUser(username string) (User, error) {
 	var user User
-	err := db.QueryRow(`select id, username, domain, email, fediverse_acct, email_opt_in, timestamp_preference, migration_target, created_at from users where username = ?`, username).
-		Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt)
+	err := scanUser(db.QueryRow(`select `+userColumns+` from users where username = ?`, username), &user)
 	if err == nil {
-		user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
 		return user, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
@@ -390,45 +409,37 @@ func (db *DB) EnsureLocalUser(username string) (User, error) {
 
 func (db *DB) UserByUsername(username string) (User, error) {
 	var user User
-	err := db.QueryRow(`select id, username, domain, email, fediverse_acct, email_opt_in, timestamp_preference, migration_target, created_at from users where username = ?`, username).
-		Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt)
-	user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
+	err := scanUser(db.QueryRow(`select `+userColumns+` from users where username = ? and suspended_at is null`, username), &user)
 	return user, err
 }
 
 func (db *DB) UserByID(id int64) (User, error) {
 	var user User
-	err := db.QueryRow(`select id, username, domain, email, fediverse_acct, email_opt_in, timestamp_preference, migration_target, created_at from users where id = ?`, id).
-		Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt)
-	user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
+	err := scanUser(db.QueryRow(`select `+userColumns+` from users where id = ?`, id), &user)
 	return user, err
 }
 
 func (db *DB) InviterByUserID(userID int64) (User, error) {
 	var user User
-	err := db.QueryRow(`
-select users.id, users.username, users.domain, users.email, users.fediverse_acct, users.email_opt_in, users.timestamp_preference, users.migration_target, users.created_at
+	err := scanUser(db.QueryRow(`
+select `+usersColumns+`
 from invites
 join users on users.id = invites.inviter_id
 where invites.used_by = ?
 order by invites.used_at asc
-limit 1`, userID).
-		Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt)
-	user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
+limit 1`, userID), &user)
 	return user, err
 }
 
 func (db *DB) UserByEmail(email string) (User, error) {
 	var user User
-	err := db.QueryRow(`select id, username, domain, email, fediverse_acct, email_opt_in, timestamp_preference, migration_target, created_at from users where lower(email) = lower(?)`, strings.TrimSpace(email)).
-		Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt)
-	user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
+	err := scanUser(db.QueryRow(`select `+userColumns+` from users where lower(email) = lower(?) and suspended_at is null`, strings.TrimSpace(email)), &user)
 	return user, err
 }
 
 func (db *DB) UserByDomain(domain string) (User, error) {
 	domain = strings.ToLower(strings.TrimSpace(domain))
-	rows, err := db.Query(`select id, username, domain, email, fediverse_acct, email_opt_in, timestamp_preference, migration_target, created_at from users where lower(domain) = lower(?) and domain != '' order by id asc limit 2`, domain)
+	rows, err := db.Query(`select `+userColumns+` from users where lower(domain) = lower(?) and domain != '' and suspended_at is null order by id asc limit 2`, domain)
 	if err != nil {
 		return User{}, err
 	}
@@ -437,10 +448,9 @@ func (db *DB) UserByDomain(domain string) (User, error) {
 	var users []User
 	for rows.Next() {
 		var user User
-		if err := rows.Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt); err != nil {
+		if err := scanUser(rows, &user); err != nil {
 			return User{}, err
 		}
-		user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
 		users = append(users, user)
 	}
 	if err := rows.Err(); err != nil {
@@ -487,19 +497,17 @@ where auth_identities.user_id = excluded.user_id`, userID, provider, subject); e
 func (db *DB) UserByAuthIdentity(provider, subject string) (User, error) {
 	provider, subject = normalizeAuthIdentity(provider, subject)
 	var user User
-	err := db.QueryRow(`
-select users.id, users.username, users.domain, users.email, users.fediverse_acct, users.email_opt_in, users.timestamp_preference, users.migration_target, users.created_at
+	err := scanUser(db.QueryRow(`
+select `+usersColumns+`
 from auth_identities
 join users on users.id = auth_identities.user_id
-where auth_identities.provider = ? and auth_identities.subject = ?`, provider, subject).
-		Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt)
-	user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
+where auth_identities.provider = ? and auth_identities.subject = ? and `+activeUserFilter, provider, subject), &user)
 	return user, err
 }
 
 func (db *DB) UserByFediverseAcct(acct string) (User, error) {
 	acct = strings.ToLower(strings.TrimSpace(acct))
-	rows, err := db.Query(`select id, username, domain, email, fediverse_acct, email_opt_in, timestamp_preference, migration_target, created_at from users where lower(fediverse_acct) = lower(?) and fediverse_acct != '' order by id asc limit 2`, acct)
+	rows, err := db.Query(`select `+userColumns+` from users where lower(fediverse_acct) = lower(?) and fediverse_acct != '' and suspended_at is null order by id asc limit 2`, acct)
 	if err != nil {
 		return User{}, err
 	}
@@ -508,10 +516,9 @@ func (db *DB) UserByFediverseAcct(acct string) (User, error) {
 	var users []User
 	for rows.Next() {
 		var user User
-		if err := rows.Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt); err != nil {
+		if err := scanUser(rows, &user); err != nil {
 			return User{}, err
 		}
-		user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
 		users = append(users, user)
 	}
 	if err := rows.Err(); err != nil {
@@ -528,12 +535,10 @@ func (db *DB) UserByFediverseAcct(acct string) (User, error) {
 
 func (db *DB) UserBySessionHash(tokenHash string) (User, error) {
 	var user User
-	err := db.QueryRow(`
-select users.id, users.username, users.domain, users.email, users.fediverse_acct, users.email_opt_in, users.timestamp_preference, users.migration_target, users.created_at
+	err := scanUser(db.QueryRow(`
+select `+usersColumns+`
 from sessions join users on users.id = sessions.user_id
-where sessions.token_hash = ? and sessions.expires_at > current_timestamp`, tokenHash).
-		Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt)
-	user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
+where sessions.token_hash = ? and sessions.expires_at > current_timestamp and `+activeUserFilter, tokenHash), &user)
 	return user, err
 }
 
@@ -558,9 +563,7 @@ func (db *DB) CreateUser(username, email string) (User, error) {
 		return User{}, err
 	}
 	var user User
-	err = db.QueryRow(`select id, username, domain, email, fediverse_acct, email_opt_in, timestamp_preference, migration_target, created_at from users where id = ?`, id).
-		Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt)
-	user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
+	err = scanUser(db.QueryRow(`select `+userColumns+` from users where id = ?`, id), &user)
 	return user, err
 }
 
@@ -637,8 +640,74 @@ func (db *DB) RecentInvites(limit int) ([]Invite, error) {
 	return invites, rows.Err()
 }
 
+func (db *DB) RevokeUnusedInvite(code string) error {
+	res, err := db.Exec(`delete from invites where code = ? and used_at is null`, strings.TrimSpace(code))
+	if err != nil {
+		return err
+	}
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func (db *DB) UseInvite(code string, userID int64) error {
 	res, err := db.Exec(`update invites set used_by = ?, used_at = current_timestamp where code = ? and used_at is null`, userID, code)
+	if err != nil {
+		return err
+	}
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (db *DB) RecentUsers(limit int) ([]User, error) {
+	if limit <= 0 {
+		limit = 25
+	}
+	rows, err := db.Query(`select `+userColumns+` from users order by created_at desc, id desc limit ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []User
+	for rows.Next() {
+		var user User
+		if err := scanUser(rows, &user); err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+	return users, rows.Err()
+}
+
+func (db *DB) SuspendUser(userID int64) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	res, err := tx.Exec(`update users set suspended_at = current_timestamp where id = ? and suspended_at is null`, userID)
+	if err != nil {
+		return err
+	}
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+	if _, err := tx.Exec(`delete from sessions where user_id = ?`, userID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (db *DB) UnsuspendUser(userID int64) error {
+	res, err := db.Exec(`update users set suspended_at = null where id = ? and suspended_at is not null`, userID)
 	if err != nil {
 		return err
 	}
@@ -755,10 +824,10 @@ func (db *DB) ActivityPubFollowers(userID int64) ([]ActivityPubFollower, error) 
 
 func (db *DB) UserFriends(userID int64) ([]User, error) {
 	rows, err := db.Query(`
-select users.id, users.username, users.domain, users.email, users.fediverse_acct, users.email_opt_in, users.timestamp_preference, users.migration_target, users.created_at
+select `+usersColumns+`
 from user_follows
 join users on users.id = user_follows.followed_user_id
-where user_follows.follower_user_id = ?
+where user_follows.follower_user_id = ? and `+activeUserFilter+`
 order by lower(users.username) asc`, userID)
 	if err != nil {
 		return nil, err
@@ -768,10 +837,9 @@ order by lower(users.username) asc`, userID)
 	var users []User
 	for rows.Next() {
 		var user User
-		if err := rows.Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt); err != nil {
+		if err := scanUser(rows, &user); err != nil {
 			return nil, err
 		}
-		user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
 		users = append(users, user)
 	}
 	return users, rows.Err()
@@ -811,11 +879,10 @@ func (db *DB) UseLoginToken(tokenHash string) (User, error) {
 	defer tx.Rollback()
 
 	var user User
-	err = tx.QueryRow(`
-select users.id, users.username, users.domain, users.email, users.fediverse_acct, users.email_opt_in, users.timestamp_preference, users.migration_target, users.created_at
+	err = scanUser(tx.QueryRow(`
+select `+usersColumns+`
 from login_tokens join users on users.id = login_tokens.user_id
-where login_tokens.token_hash = ? and login_tokens.used_at is null and login_tokens.expires_at > current_timestamp`, tokenHash).
-		Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt)
+where login_tokens.token_hash = ? and login_tokens.used_at is null and login_tokens.expires_at > current_timestamp and `+activeUserFilter, tokenHash), &user)
 	if err != nil {
 		return User{}, err
 	}
@@ -825,7 +892,6 @@ where login_tokens.token_hash = ? and login_tokens.used_at is null and login_tok
 	if err := tx.Commit(); err != nil {
 		return User{}, err
 	}
-	user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
 	return user, nil
 }
 
@@ -868,9 +934,7 @@ where token_hash = ? and used_at is null and expires_at > current_timestamp`, to
 	}
 
 	var user User
-	err = db.QueryRow(`select id, username, domain, email, fediverse_acct, email_opt_in, timestamp_preference, migration_target, created_at from users where id = ?`, userID).
-		Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt)
-	user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
+	err = scanUser(db.QueryRow(`select `+userColumns+` from users where id = ?`, userID), &user)
 	return user, err
 }
 
@@ -1041,16 +1105,14 @@ func (db *DB) APITokensByUser(userID int64) ([]APIToken, error) {
 
 func (db *DB) UserByAPITokenHash(tokenHash string) (User, error) {
 	var user User
-	err := db.QueryRow(`
-select users.id, users.username, users.domain, users.email, users.fediverse_acct, users.email_opt_in, users.timestamp_preference, users.migration_target, users.created_at
+	err := scanUser(db.QueryRow(`
+select `+usersColumns+`
 from api_tokens join users on users.id = api_tokens.user_id
-where api_tokens.token_hash = ?`, tokenHash).
-		Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt)
+where api_tokens.token_hash = ? and `+activeUserFilter, tokenHash), &user)
 	if err != nil {
 		return User{}, err
 	}
 	_, _ = db.Exec(`update api_tokens set last_used_at = current_timestamp where token_hash = ?`, tokenHash)
-	user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
 	return user, nil
 }
 
@@ -1213,19 +1275,17 @@ func (db *DB) UnsubscribeTokenForUser(userID int64, tokenFactory func() (string,
 
 func (db *DB) UserByUnsubscribeToken(token string) (User, error) {
 	var user User
-	err := db.QueryRow(`
-select users.id, users.username, users.domain, users.email, users.fediverse_acct, users.email_opt_in, users.timestamp_preference, users.migration_target, users.created_at
+	err := scanUser(db.QueryRow(`
+select `+usersColumns+`
 from email_unsubscribe_tokens
 join users on users.id = email_unsubscribe_tokens.user_id
-where email_unsubscribe_tokens.token = ?`, token).
-		Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt)
-	user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
+where email_unsubscribe_tokens.token = ?`, token), &user)
 	return user, err
 }
 
 func (db *DB) DailyEmailCandidates(sentOn string, limit int) ([]DailyEmailCandidate, error) {
 	rows, err := db.Query(`
-select users.id, users.username, users.domain, users.email, users.fediverse_acct, users.email_opt_in, users.timestamp_preference, users.migration_target, users.created_at,
+select `+usersColumns+`,
        posts.id, posts.user_id, post_users.username, posts.word, posts.image_url, posts.image_focus_x, posts.image_focus_y, posts.created_at,
        (select count(*) from daily_email_sends all_sends where all_sends.user_id = users.id)
 from users
@@ -1246,6 +1306,7 @@ left join posts on posts.id = (
 left join users post_users on post_users.id = posts.user_id
 where users.email_opt_in = 1
   and users.email != ''
+  and `+activeUserFilter+`
   and daily_email_sends.user_id is null
 order by users.id asc
 limit ?`, sentOn, limit)
@@ -1272,6 +1333,7 @@ limit ?`, sentOn, limit)
 			&candidate.User.EmailOptIn,
 			&candidate.User.TimestampPreference,
 			&candidate.User.MigrationTarget,
+			&candidate.User.SuspendedAt,
 			&candidate.User.CreatedAt,
 			&postID,
 			&postUserID,
@@ -1310,7 +1372,7 @@ limit ?`, sentOn, limit)
 
 func (db *DB) DailyPushCandidates(sentOn string, limit int) ([]DailyPushCandidate, error) {
 	rows, err := db.Query(`
-select users.id, users.username, users.domain, users.email, users.fediverse_acct, users.email_opt_in, users.timestamp_preference, users.migration_target, users.created_at,
+select `+usersColumns+`,
        posts.id, posts.user_id, post_users.username, posts.word, posts.image_url, posts.image_focus_x, posts.image_focus_y, posts.created_at,
        (select count(*) from daily_push_sends all_sends where all_sends.user_id = users.id)
 from users
@@ -1331,6 +1393,7 @@ left join posts on posts.id = (
 )
 left join users post_users on post_users.id = posts.user_id
 where daily_push_sends.user_id is null
+  and `+activeUserFilter+`
 order by users.id asc
 limit ?`, sentOn, limit)
 	if err != nil {
@@ -1356,6 +1419,7 @@ limit ?`, sentOn, limit)
 			&candidate.User.EmailOptIn,
 			&candidate.User.TimestampPreference,
 			&candidate.User.MigrationTarget,
+			&candidate.User.SuspendedAt,
 			&candidate.User.CreatedAt,
 			&postID,
 			&postUserID,
@@ -1447,12 +1511,10 @@ func (db *DB) UpdatePasskeyCredential(credential webauthn.Credential) error {
 
 func (db *DB) UserByPasskeyID(rawID []byte) (User, error) {
 	var user User
-	err := db.QueryRow(`
-select users.id, users.username, users.domain, users.email, users.fediverse_acct, users.email_opt_in, users.timestamp_preference, users.migration_target, users.created_at
+	err := scanUser(db.QueryRow(`
+select `+usersColumns+`
 from passkeys join users on users.id = passkeys.user_id
-where passkeys.credential_id = ?`, passkeyID(rawID)).
-		Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.CreatedAt)
-	user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
+where passkeys.credential_id = ? and `+activeUserFilter, passkeyID(rawID)), &user)
 	return user, err
 }
 

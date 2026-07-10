@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -160,6 +161,122 @@ func TestOperatorInvitesCreatesInvite(t *testing.T) {
 	}
 	if !strings.Contains(string(body), "/join?invite=") {
 		t.Fatalf("expected invite link in response body, got %q", string(body))
+	}
+}
+
+func TestOperatorInvitesRevokesUnusedInvite(t *testing.T) {
+	a := testApp(t)
+	operator, err := a.db.CreateUser("operator", "operator@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.operatorEmails[strings.ToLower(operator.Email)] = struct{}{}
+	sessionToken, sessionHash, err := newToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.CreateSession(sessionHash, operator.ID, farFuture()); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.CreateInvite("open-invite"); err != nil {
+		t.Fatal(err)
+	}
+
+	wGet := httptest.NewRecorder()
+	reqGet := httptest.NewRequest(http.MethodGet, "/operator/invites", nil)
+	reqGet.AddCookie(&http.Cookie{Name: sessionCookie, Value: sessionToken})
+	a.operatorInvites(wGet, reqGet)
+	csrf := cookieByName(wGet.Result(), csrfCookie)
+	if csrf == nil || csrf.Value == "" {
+		t.Fatal("expected csrf cookie from GET /operator/invites")
+	}
+
+	form := url.Values{}
+	form.Set("action", "revoke-invite")
+	form.Set("invite_code", "open-invite")
+	form.Set(csrfField, csrf.Value)
+	reqPost := httptest.NewRequest(http.MethodPost, "/operator/invites", strings.NewReader(form.Encode()))
+	reqPost.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	reqPost.AddCookie(&http.Cookie{Name: sessionCookie, Value: sessionToken})
+	reqPost.AddCookie(csrf)
+	wPost := httptest.NewRecorder()
+	a.operatorInvites(wPost, reqPost)
+
+	if wPost.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, wPost.Code)
+	}
+	body, err := io.ReadAll(wPost.Result().Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "invite revoked") {
+		t.Fatalf("expected revoke notice, got %q", string(body))
+	}
+	if _, err := a.db.InviteByCode("open-invite"); err == nil {
+		t.Fatal("expected invite to be revoked")
+	}
+}
+
+func TestOperatorInvitesSuspendsUserAndClearsSession(t *testing.T) {
+	a := testApp(t)
+	operator, err := a.db.CreateUser("operator", "operator@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	member, err := a.db.CreateUser("member", "member@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.operatorEmails[strings.ToLower(operator.Email)] = struct{}{}
+	operatorToken, operatorHash, err := newToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.CreateSession(operatorHash, operator.ID, farFuture()); err != nil {
+		t.Fatal(err)
+	}
+	memberToken, memberHash, err := newToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.CreateSession(memberHash, member.ID, farFuture()); err != nil {
+		t.Fatal(err)
+	}
+
+	wGet := httptest.NewRecorder()
+	reqGet := httptest.NewRequest(http.MethodGet, "/operator/invites", nil)
+	reqGet.AddCookie(&http.Cookie{Name: sessionCookie, Value: operatorToken})
+	a.operatorInvites(wGet, reqGet)
+	csrf := cookieByName(wGet.Result(), csrfCookie)
+	if csrf == nil || csrf.Value == "" {
+		t.Fatal("expected csrf cookie from GET /operator/invites")
+	}
+
+	form := url.Values{}
+	form.Set("action", "suspend-user")
+	form.Set("user_id", strconv.FormatInt(member.ID, 10))
+	form.Set(csrfField, csrf.Value)
+	reqPost := httptest.NewRequest(http.MethodPost, "/operator/invites", strings.NewReader(form.Encode()))
+	reqPost.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	reqPost.AddCookie(&http.Cookie{Name: sessionCookie, Value: operatorToken})
+	reqPost.AddCookie(csrf)
+	wPost := httptest.NewRecorder()
+	a.operatorInvites(wPost, reqPost)
+
+	if wPost.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, wPost.Code)
+	}
+	suspended, err := a.db.UserByID(member.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !suspended.SuspendedAt.Valid {
+		t.Fatal("expected member to be suspended")
+	}
+	reqMember := httptest.NewRequest(http.MethodGet, "/settings", nil)
+	reqMember.AddCookie(&http.Cookie{Name: sessionCookie, Value: memberToken})
+	if _, ok := a.currentUser(reqMember); ok {
+		t.Fatal("expected suspended member session to stop authenticating")
 	}
 }
 

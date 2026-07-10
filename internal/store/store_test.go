@@ -603,3 +603,81 @@ func TestActivityPubDeliveryLifecycle(t *testing.T) {
 		t.Fatalf("expected delivered row excluded, got %#v", deliveries)
 	}
 }
+
+func TestRevokeUnusedInviteKeepsUsedInvites(t *testing.T) {
+	db := testDB(t)
+	user, err := db.CreateUser("member", "member@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CreateInvite("open-invite"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CreateInvite("used-invite"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.UseInvite("used-invite", user.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := db.RevokeUnusedInvite("open-invite"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.InviteByCode("open-invite"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected revoked invite to be gone, got %v", err)
+	}
+	if err := db.RevokeUnusedInvite("used-invite"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected used invite to remain, got %v", err)
+	}
+	if _, err := db.InviteByCode("used-invite"); err != nil {
+		t.Fatalf("expected used invite to remain, got %v", err)
+	}
+}
+
+func TestSuspendUserBlocksSessionsAndAuthLookups(t *testing.T) {
+	db := testDB(t)
+	user, err := db.CreateUser("member", "member@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CreateSession("session-hash", user.ID, time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.LinkAuthIdentity(user.ID, "mastodon", "@member@example.social"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := db.SuspendUser(user.ID); err != nil {
+		t.Fatal(err)
+	}
+	suspended, err := db.UserByID(user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !suspended.SuspendedAt.Valid {
+		t.Fatal("expected user to be suspended")
+	}
+	if _, err := db.UserBySessionHash("session-hash"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected suspended session lookup to fail, got %v", err)
+	}
+	if _, err := db.UserByAuthIdentity("mastodon", "@member@example.social"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected suspended identity lookup to fail, got %v", err)
+	}
+	if _, err := db.UserByEmail("member@example.com"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected suspended email lookup to fail, got %v", err)
+	}
+	if _, err := db.UserByUsername("member"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected suspended username lookup to fail, got %v", err)
+	}
+
+	if err := db.UnsuspendUser(user.ID); err != nil {
+		t.Fatal(err)
+	}
+	unsuspended, err := db.UserByEmail("member@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unsuspended.SuspendedAt.Valid {
+		t.Fatal("expected user to be unsuspended")
+	}
+}

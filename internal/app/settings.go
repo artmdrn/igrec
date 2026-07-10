@@ -33,6 +33,13 @@ type inviteView struct {
 	Used bool
 }
 
+type operatorUserView struct {
+	ID        int64
+	Username  string
+	Email     string
+	Suspended bool
+}
+
 type uploadStorageStats struct {
 	FileCount        int
 	Bytes            int64
@@ -324,6 +331,11 @@ func (a *App) operatorInvites(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		users, err := a.db.RecentUsers(25)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		views := make([]inviteView, 0, len(invites))
 		for _, invite := range invites {
 			views = append(views, inviteView{
@@ -332,7 +344,16 @@ func (a *App) operatorInvites(w http.ResponseWriter, r *http.Request) {
 				Used: invite.UsedAt.Valid,
 			})
 		}
-		data := map[string]any{"Invites": views}
+		userViews := make([]operatorUserView, 0, len(users))
+		for _, row := range users {
+			userViews = append(userViews, operatorUserView{
+				ID:        row.ID,
+				Username:  row.Username,
+				Email:     row.Email,
+				Suspended: row.SuspendedAt.Valid,
+			})
+		}
+		data := map[string]any{"Invites": views, "Users": userViews, "OperatorUserID": user.ID}
 		for key, value := range extra {
 			data[key] = value
 		}
@@ -345,6 +366,44 @@ func (a *App) operatorInvites(w http.ResponseWriter, r *http.Request) {
 	}
 	if !a.validCSRF(r) {
 		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	switch r.FormValue("action") {
+	case "revoke-invite":
+		code := strings.TrimSpace(r.FormValue("invite_code"))
+		if code == "" {
+			render(map[string]any{"Error": "invite code is required"})
+			return
+		}
+		if err := a.db.RevokeUnusedInvite(code); err != nil {
+			render(map[string]any{"Error": "invite is already used or missing"})
+			return
+		}
+		render(map[string]any{"Notice": "invite revoked"})
+		return
+	case "suspend-user", "unsuspend-user":
+		userID, err := strconv.ParseInt(r.FormValue("user_id"), 10, 64)
+		if err != nil || userID <= 0 {
+			render(map[string]any{"Error": "user is required"})
+			return
+		}
+		if userID == user.ID {
+			render(map[string]any{"Error": "operator cannot suspend their own account here"})
+			return
+		}
+		if r.FormValue("action") == "suspend-user" {
+			if err := a.db.SuspendUser(userID); err != nil {
+				render(map[string]any{"Error": "user is already suspended or missing"})
+				return
+			}
+			render(map[string]any{"Notice": "user suspended"})
+			return
+		}
+		if err := a.db.UnsuspendUser(userID); err != nil {
+			render(map[string]any{"Error": "user is already active or missing"})
+			return
+		}
+		render(map[string]any{"Notice": "user unsuspended"})
 		return
 	}
 	code, err := newInviteCode()
