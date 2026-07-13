@@ -54,6 +54,22 @@ jobs:
           cd /opt/igrec/src
           go test ./...
           CGO_ENABLED=1 go build -o /tmp/igrec-bin ./cmd/igrec
+          if sudo test -x /opt/igrec/bin/igrec; then
+            sudo cp /opt/igrec/bin/igrec /opt/igrec/bin/igrec.previous
+          fi
+          rollback_deploy() {
+            status=$?
+            trap - ERR
+            if sudo test -x /opt/igrec/bin/igrec.previous; then
+              echo "Deploy failed; restoring previous igrec binary"
+              sudo cp /opt/igrec/bin/igrec.previous /opt/igrec/bin/igrec
+              sudo chown igrec:igrec /opt/igrec/bin/igrec
+              sudo chmod 755 /opt/igrec/bin/igrec
+              sudo systemctl restart igrec || true
+            fi
+            exit "$status"
+          }
+          trap rollback_deploy ERR
           sudo mv /tmp/igrec-bin /opt/igrec/bin/igrec
           sudo chown -R igrec:igrec /opt/igrec
           sudo chmod 755 /opt/igrec/bin/igrec
@@ -64,5 +80,7 @@ jobs:
           sudo systemctl enable --now igrec-daily-email.timer
           sudo systemctl restart igrec
           systemctl is-active igrec
+          curl -fsS -H 'Host: igrec.net' http://127.0.0.1/healthz
           curl -fsS -H 'Host: igrec.net' http://127.0.0.1/ >/dev/null
+          trap - ERR
           REMOTE

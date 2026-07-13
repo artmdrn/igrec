@@ -50,4 +50,7 @@ ssh ubuntu@79.72.31.189 'systemctl status igrec --no-pager; sudo nginx -t'
 
 ## 5) Rollback
 
-If deploy smoke checks fail, re-run the previous known-good commit through the Deploy workflow, then re-run section 2.
+If deploy smoke checks fail, the Deploy workflow restores
+`/opt/igrec/bin/igrec.previous` and restarts `igrec.service`
+automatically. Confirm service health with sections 2 and 3, then fix the
+failed commit before running Deploy again.

@@ -117,7 +117,7 @@ Done when:
 - [x] Add restore drill documentation.
 - [x] Add rate limits for posting, inbound email, auth, and ActivityPub inbox.
 - [x] Add basic moderation/operator controls for invite revocation and account suspension.
-- Extend CI with integration tests and deployment rollback checks.
+- [x] Extend CI with integration tests and deployment rollback checks.
 
 Done when:
 

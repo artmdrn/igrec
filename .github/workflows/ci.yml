@@ -3,8 +3,6 @@ name: CI
 on:
   pull_request:
   push:
-    branches:
-      - main
 
 permissions:
   contents: read
@@ -32,8 +30,8 @@ jobs:
             exit 1
           fi
 
-      - name: Test
-        run: go test ./...
+      - name: Test unit and integration packages
+        run: go test -count=1 ./...
 
       - name: Build
         run: go build ./cmd/igrec

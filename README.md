@@ -137,7 +137,9 @@ Deployment and verification checklist: `deploy/ORACLE_DEPLOY_CHECKLIST.md`.
 
 ## CI/CD
 
-GitHub Actions runs `gofmt`, `go test ./...`, and `go build ./cmd/igrec` on every pull request and push to `main`.
+GitHub Actions runs `gofmt`, uncached unit/integration tests with
+`go test -count=1 ./...`, and `go build ./cmd/igrec` on every pull
+request and push.
 
 Deployments are manual during beta. Run the Deploy workflow from GitHub Actions when you want to update production. Required GitHub repository secrets:
 
@@ -145,6 +147,9 @@ Deployments are manual during beta. Run the Deploy workflow from GitHub Actions 
 - `ORACLE_USER`: `ubuntu`
 - `ORACLE_SSH_KEY`: private SSH key with access to the Oracle host
 
-The deploy workflow uploads the source, builds on Oracle, restarts `igrec.service`, and smoke-tests nginx locally with `Host: igrec.net`.
+The deploy workflow uploads the source, builds and tests on Oracle,
+keeps the previous binary as `/opt/igrec/bin/igrec.previous`, restarts
+`igrec.service`, smoke-tests nginx locally with `Host: igrec.net`, and
+restores the previous binary automatically if restart or smoke checks fail.
 
 For stricter control, configure the `production` GitHub Environment to require your approval before jobs can access deployment secrets.
