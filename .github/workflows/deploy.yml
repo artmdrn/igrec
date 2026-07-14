@@ -32,6 +32,28 @@ jobs:
           chmod 600 ~/.ssh/oracle
           ssh-keyscan -H "$ORACLE_HOST" >> ~/.ssh/known_hosts
 
+      - name: Install Cloudflare origin certificate
+        env:
+          ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
+          ORACLE_USER: ${{ secrets.ORACLE_USER }}
+          CLOUDFLARE_ORIGIN_CERT: ${{ secrets.CLOUDFLARE_ORIGIN_CERT }}
+          CLOUDFLARE_ORIGIN_KEY: ${{ secrets.CLOUDFLARE_ORIGIN_KEY }}
+        run: |
+          test -n "$CLOUDFLARE_ORIGIN_CERT"
+          test -n "$CLOUDFLARE_ORIGIN_KEY"
+          printf '%s\n' "$CLOUDFLARE_ORIGIN_CERT" > /tmp/igrec-origin.pem
+          printf '%s\n' "$CLOUDFLARE_ORIGIN_KEY" > /tmp/igrec-origin.key
+          chmod 600 /tmp/igrec-origin.pem /tmp/igrec-origin.key
+          scp -i ~/.ssh/oracle /tmp/igrec-origin.pem "${ORACLE_USER:-ubuntu}@${ORACLE_HOST}:/tmp/igrec-origin.pem"
+          scp -i ~/.ssh/oracle /tmp/igrec-origin.key "${ORACLE_USER:-ubuntu}@${ORACLE_HOST}:/tmp/igrec-origin.key"
+          ssh -i ~/.ssh/oracle "${ORACLE_USER:-ubuntu}@${ORACLE_HOST}" <<'REMOTE'
+          set -euo pipefail
+          sudo install -d -m 0750 -o root -g www-data /etc/ssl/cloudflare
+          sudo install -m 0640 -o root -g www-data /tmp/igrec-origin.pem /etc/ssl/cloudflare/igrec.net.pem
+          sudo install -m 0640 -o root -g www-data /tmp/igrec-origin.key /etc/ssl/cloudflare/igrec.net.key
+          rm -f /tmp/igrec-origin.pem /tmp/igrec-origin.key
+          REMOTE
+
       - name: Upload source
         env:
           ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
@@ -57,9 +79,17 @@ jobs:
           if sudo test -x /opt/igrec/bin/igrec; then
             sudo cp /opt/igrec/bin/igrec /opt/igrec/bin/igrec.previous
           fi
+          if sudo test -f /etc/nginx/sites-available/igrec.net; then
+            sudo cp /etc/nginx/sites-available/igrec.net /etc/nginx/sites-available/igrec.net.previous
+          fi
           rollback_deploy() {
             status=$?
             trap - ERR
+            if sudo test -f /etc/nginx/sites-available/igrec.net.previous; then
+              echo "Deploy failed; restoring previous nginx site"
+              sudo cp /etc/nginx/sites-available/igrec.net.previous /etc/nginx/sites-available/igrec.net
+              sudo nginx -t && sudo systemctl reload nginx || true
+            fi
             if sudo test -x /opt/igrec/bin/igrec.previous; then
               echo "Deploy failed; restoring previous igrec binary"
               sudo cp /opt/igrec/bin/igrec.previous /opt/igrec/bin/igrec
@@ -76,11 +106,16 @@ jobs:
           sudo cp deploy/systemd/igrec.service /etc/systemd/system/igrec.service
           sudo cp deploy/systemd/igrec-daily-email.service /etc/systemd/system/igrec-daily-email.service
           sudo cp deploy/systemd/igrec-daily-email.timer /etc/systemd/system/igrec-daily-email.timer
+          sudo cp deploy/nginx/igrec.net /etc/nginx/sites-available/igrec.net
+          sudo ln -sf /etc/nginx/sites-available/igrec.net /etc/nginx/sites-enabled/igrec.net
           sudo systemctl daemon-reload
+          sudo nginx -t
+          sudo systemctl reload nginx
           sudo systemctl enable --now igrec-daily-email.timer
           sudo systemctl restart igrec
           systemctl is-active igrec
           curl -fsS -H 'Host: igrec.net' http://127.0.0.1/healthz
+          curl -fsSk -H 'Host: igrec.net' https://127.0.0.1/healthz
           curl -fsS -H 'Host: igrec.net' http://127.0.0.1/ >/dev/null
           trap - ERR
           REMOTE

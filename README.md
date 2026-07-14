@@ -146,10 +146,14 @@ Deployments are manual during beta. Run the Deploy workflow from GitHub Actions 
 - `ORACLE_HOST`: `79.72.31.189`
 - `ORACLE_USER`: `ubuntu`
 - `ORACLE_SSH_KEY`: private SSH key with access to the Oracle host
+- `CLOUDFLARE_ORIGIN_CERT`: Cloudflare Origin CA certificate PEM for `igrec.net`
+- `CLOUDFLARE_ORIGIN_KEY`: matching private key PEM
 
 The deploy workflow uploads the source, builds and tests on Oracle,
+installs the Cloudflare origin certificate for nginx HTTPS,
 keeps the previous binary as `/opt/igrec/bin/igrec.previous`, restarts
-`igrec.service`, smoke-tests nginx locally with `Host: igrec.net`, and
+`igrec.service`, smoke-tests nginx locally over HTTP and HTTPS with
+`Host: igrec.net`, and
 restores the previous binary automatically if restart or smoke checks fail.
 
 For stricter control, configure the `production` GitHub Environment to require your approval before jobs can access deployment secrets.

@@ -111,7 +111,7 @@ Done when:
 
 ## Phase 7: Production Hardening
 
-- Add HTTPS origin certificate on Oracle.
+- [x] Add HTTPS origin certificate on Oracle.
 - Rotate all keys that appeared in chat.
 - [x] Add backups for SQLite.
 - [x] Add restore drill documentation.
