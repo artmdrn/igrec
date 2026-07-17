@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -72,6 +73,9 @@ func (a *App) apiCreateWord(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var raw string
+	var imageURL *string
+	focusX := 0.5
+	focusY := 0.5
 	if strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
 		var payload struct {
 			Word string `json:"word"`
@@ -82,18 +86,41 @@ func (a *App) apiCreateWord(w http.ResponseWriter, r *http.Request) {
 		}
 		raw = payload.Word
 	} else {
-		if err := r.ParseForm(); err != nil {
-			http.Error(w, "invalid form", http.StatusBadRequest)
-			return
+		r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes+2<<20)
+		if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+			if err := r.ParseMultipartForm(maxUploadBytes + 2<<20); err != nil {
+				http.Error(w, "invalid form", http.StatusBadRequest)
+				return
+			}
+		} else {
+			if err := r.ParseForm(); err != nil {
+				http.Error(w, "invalid form", http.StatusBadRequest)
+				return
+			}
 		}
 		raw = r.FormValue("word")
+		focusX = parseUnitFloat(r.FormValue("focus_x"), 0.5)
+		focusY = parseUnitFloat(r.FormValue("focus_y"), 0.5)
+		imageFile, imageHeader, err := r.FormFile("image_file")
+		if err == nil {
+			defer imageFile.Close()
+			uploaded, uploadErr := a.saveUploadedImage(imageFile, imageHeader)
+			if uploadErr != nil {
+				http.Error(w, uploadErr.Error(), http.StatusBadRequest)
+				return
+			}
+			imageURL = &uploaded
+		} else if !errors.Is(err, http.ErrMissingFile) {
+			http.Error(w, "image upload failed", http.StatusBadRequest)
+			return
+		}
 	}
 	value, err := word.Normalize(raw)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	post, err := a.db.CreatePost(user.ID, value, nil)
+	post, err := a.db.CreatePostWithFocus(user.ID, value, imageURL, focusX, focusY)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

@@ -42,6 +42,15 @@ During beta, the nudge uses the newest word from someone else; once local follow
 
 Public archives are available as JSON at `/api/@username/words`. The endpoint does not require authentication and returns the user's words, canonical URLs, image URLs when present, timestamps, and timestamp display preference.
 
+Authenticated clients can create words with scoped API tokens from `/settings`:
+
+```sh
+curl -X POST -H "Authorization: Bearer $IGREC_API_TOKEN" -d "word=moment" https://igrec.net/api/words
+curl -X POST -H "Authorization: Bearer $IGREC_API_TOKEN" -F "word=moment" -F "image_file=@photo.png" https://igrec.net/api/words
+```
+
+`POST /api/words` accepts JSON, URL-encoded forms, and multipart forms. Multipart uploads use the same JPEG/PNG sanitizer and 8MB limit as `/write`; optional `focus_x` and `focus_y` values should be between `0` and `1`.
+
 Logged-in users can download a one-click JSON export from `/settings/export`. It includes profile metadata, words, and an ActivityPub-flavored actor/outbox snapshot.
 
 ## Wallet cards
@@ -93,7 +102,7 @@ The server uses `openssl smime` to sign `manifest.json`, so `openssl` must be av
 
 ## Image uploads
 
-`/write` supports JPEG/PNG uploads with a conservative policy:
+`/write`, inbound email, and authenticated `POST /api/words` support JPEG/PNG uploads with a conservative policy:
 
 - Max upload size: 8MB
 - Accepted types: `image/jpeg`, `image/png`
