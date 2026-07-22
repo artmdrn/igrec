@@ -72,6 +72,64 @@ func TestAPICreateWordRejectsMissingToken(t *testing.T) {
 	}
 }
 
+func TestAPIArchiveUsesStoredPostRepresentation(t *testing.T) {
+	a := testApp(t)
+	user, err := a.db.CreateUser("archiveapi", "archiveapi@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.db.UpdateSettingsProfile(user.ID, "datetime", false, "", "", nil); err != nil {
+		t.Fatal(err)
+	}
+	imageURL := "/uploads/frame.jpg"
+	post, err := a.db.CreatePostWithFocus(user.ID, "shared", &imageURL, 0.2, 0.8)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/@archiveapi/words", nil)
+	w := httptest.NewRecorder()
+
+	a.api(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, w.Code, w.Body.String())
+	}
+	var payload struct {
+		User struct {
+			Username            string `json:"username"`
+			URL                 string `json:"url"`
+			TimestampPreference string `json:"timestamp_preference"`
+		} `json:"user"`
+		Words []struct {
+			ID        int64  `json:"id"`
+			Word      string `json:"word"`
+			URL       string `json:"url"`
+			ImageURL  string `json:"image_url"`
+			CreatedAt string `json:"created_at"`
+		} `json:"words"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.User.Username != "archiveapi" || payload.User.URL != "http://localhost:8080/@archiveapi" {
+		t.Fatalf("unexpected user metadata: %#v", payload.User)
+	}
+	if payload.User.TimestampPreference != "datetime" {
+		t.Fatalf("expected timestamp preference, got %q", payload.User.TimestampPreference)
+	}
+	if len(payload.Words) != 1 {
+		t.Fatalf("expected one word, got %#v", payload.Words)
+	}
+	got := payload.Words[0]
+	if got.ID != post.ID || got.Word != "shared" || got.URL != "http://localhost:8080/@archiveapi/1-shared" || got.ImageURL != imageURL {
+		t.Fatalf("API word does not match stored post: %#v", got)
+	}
+	if got.CreatedAt == "" {
+		t.Fatal("expected created_at")
+	}
+}
+
 func TestAPICreateWordWithMultipartImage(t *testing.T) {
 	a := testApp(t)
 	a.cfg.UploadDir = t.TempDir()

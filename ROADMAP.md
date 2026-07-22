@@ -141,12 +141,12 @@ These are deliberately parked until the beta loop is stable. They should not be 
 - [x] Enforce the same one-word validation server-side as web, email, and ActivityPub.
 - [x] Support optional image attachment according to the production upload policy.
 - [x] Use scoped API tokens so people can build their own clients without sharing login sessions.
-- Use the same internal representation to power email, PWA, and first-party UI features.
+- [x] Use the same internal representation to power email, PWA, and first-party UI features.
 
 Done when:
 
 - Public archives are available as stable JSON without authentication.
-- API output includes enough metadata for clients to render dates according to user preference.
+- [x] API output includes enough metadata for clients to render dates according to user preference.
 - [x] Users can create and revoke API tokens.
 - [x] Third-party clients can post words without browser cookies.
 - [x] API writes behave identically to web writes for validation, timestamps, and attribution.

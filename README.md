@@ -40,7 +40,7 @@ During beta, the nudge uses the newest word from someone else; once local follow
 
 ## API and export
 
-Public archives are available as JSON at `/api/@username/words`. The endpoint does not require authentication and returns the user's words, canonical URLs, image URLs when present, timestamps, and timestamp display preference.
+Public archives are available as JSON at `/api/@username/words`. The endpoint does not require authentication and returns the user's words from the same stored post records used by the web UI, including canonical URLs, image URLs when present, timestamps, and timestamp display preference.
 
 Authenticated clients can create words with scoped API tokens from `/settings`:
 
