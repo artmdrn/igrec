@@ -32,10 +32,18 @@ func sendDailyEmails(cfg app.Config, db *store.DB) (int, error) {
 			return sent, err
 		}
 		unsubscribe := fmt.Sprintf("%s/u/%s", cfg.BaseURL, unsubscribeToken)
-		body := emailpkg.DailyPrompt("", "", candidate.SentCount == 0, unsubscribe)
+		onThisDayWord := ""
+		onThisDay, err := db.PostsOnThisDay(candidate.User.ID, time.Now())
+		if err != nil {
+			return sent, err
+		}
+		if len(onThisDay) > 0 {
+			onThisDayWord = onThisDay[0].Word
+		}
+		body := emailpkg.DailyPrompt("", "", candidate.SentCount == 0, unsubscribe, onThisDayWord)
 		if candidate.Post.Valid {
 			post := candidate.Post.V
-			body = emailpkg.DailyPrompt(post.Username, post.Word, candidate.SentCount == 0, unsubscribe)
+			body = emailpkg.DailyPrompt(post.Username, post.Word, candidate.SentCount == 0, unsubscribe, onThisDayWord)
 		}
 		err = (emailpkg.Resend{
 			APIKey:  cfg.ResendAPIKey,

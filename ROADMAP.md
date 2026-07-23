@@ -153,7 +153,7 @@ Done when:
 
 ### On This Day
 
-- After one year of activity, daily email gains a second line:
+- [x] After one year of activity, daily email gains a second line:
   `On this day last year, you said: [word].`
 - Stay completely silent until there is at least one eligible prior-year word.
 

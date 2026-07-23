@@ -62,10 +62,13 @@ func (r Resend) SendPlain(to, subject, body string) error {
 	return nil
 }
 
-func DailyPrompt(username, value string, first bool, unsubscribeURL string) string {
+func DailyPrompt(username, value string, first bool, unsubscribeURL, onThisDayWord string) string {
 	body := ">_\n"
 	if username != "" && value != "" {
 		body = fmt.Sprintf("@%s said: %s\n\n>_\n", username, value)
+	}
+	if onThisDayWord != "" {
+		body += "\nOn this day last year, you said: " + onThisDayWord + ".\n"
 	}
 	if first {
 		body += "\nreply with one word. it will post to igrec.\n"
