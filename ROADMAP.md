@@ -155,7 +155,7 @@ Done when:
 
 - [x] After one year of activity, daily email gains a second line:
   `On this day last year, you said: [word].`
-- Stay completely silent until there is at least one eligible prior-year word.
+- [x] Stay completely silent until there is at least one eligible prior-year word.
 
 Done when:
 

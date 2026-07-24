@@ -16,7 +16,12 @@ import (
 	"igrec.net/igrec/internal/store"
 )
 
-var sendWebPushNotification = webpush.SendNotification
+var (
+	sendPlainEmail = func(sender emailpkg.Resend, to, subject, body string) error {
+		return sender.SendPlain(to, subject, body)
+	}
+	sendWebPushNotification = webpush.SendNotification
+)
 
 func sendDailyEmails(cfg app.Config, db *store.DB) (int, error) {
 	sentOn := time.Now().UTC().Format(time.DateOnly)
@@ -45,7 +50,7 @@ func sendDailyEmails(cfg app.Config, db *store.DB) (int, error) {
 			post := candidate.Post.V
 			body = emailpkg.DailyPrompt(post.Username, post.Word, candidate.SentCount == 0, unsubscribe, onThisDayWord)
 		}
-		err = (emailpkg.Resend{
+		err = sendPlainEmail(emailpkg.Resend{
 			APIKey:  cfg.ResendAPIKey,
 			From:    cfg.DailyEmailFrom,
 			ReplyTo: fmt.Sprintf("Y <_+%s@igrec.net>", candidate.User.Username),
@@ -53,7 +58,7 @@ func sendDailyEmails(cfg app.Config, db *store.DB) (int, error) {
 				"List-Unsubscribe":      "<" + unsubscribe + ">",
 				"List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
 			},
-		}).SendPlain(candidate.User.Email, ">", body)
+		}, candidate.User.Email, ">", body)
 		if err != nil {
 			return sent, fmt.Errorf("send daily email to %s: %w", candidate.User.Email, err)
 		}

@@ -11,10 +11,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	webpush "github.com/SherClockHolmes/webpush-go"
 
 	"igrec.net/igrec/internal/app"
+	emailpkg "igrec.net/igrec/internal/email"
 	"igrec.net/igrec/internal/store"
 )
 
@@ -30,6 +32,57 @@ func testDailyDB(t *testing.T) *store.DB {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	return db
+}
+
+func TestSendDailyEmailsStaysSilentBeforeEligibleOnThisDay(t *testing.T) {
+	db := testDailyDB(t)
+	user, err := db.CreateUser("reader", "reader@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SetEmailOptIn(user.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	for _, post := range []struct {
+		word string
+		at   time.Time
+	}{
+		{word: "today", at: now},
+		{word: "nearby", at: now.AddDate(-1, 0, -1)},
+	} {
+		if _, err := db.Exec(
+			`insert into posts (user_id, word, created_at) values (?, ?, ?)`,
+			user.ID, post.word, post.at.Format("2006-01-02 15:04:05"),
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	originalSend := sendPlainEmail
+	t.Cleanup(func() { sendPlainEmail = originalSend })
+	var body string
+	sendPlainEmail = func(sender emailpkg.Resend, to, subject, sentBody string) error {
+		if to != "reader@example.com" {
+			t.Fatalf("unexpected recipient %q", to)
+		}
+		body = sentBody
+		return nil
+	}
+
+	sent, err := sendDailyEmails(app.Config{
+		BaseURL:        "https://igrec.net",
+		DailyEmailFrom: "Y <_@igrec.net>",
+	}, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sent != 1 {
+		t.Fatalf("expected one email sent, got %d", sent)
+	}
+	if strings.Contains(body, "On this day") || strings.Contains(body, "nearby") || strings.Contains(body, "today") {
+		t.Fatalf("expected no on-this-day copy before eligible prior-year word, got %q", body)
+	}
 }
 
 func TestSendDailyPushesMarksSentAndPrunesStaleSubscriptions(t *testing.T) {
