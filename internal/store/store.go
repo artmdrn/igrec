@@ -68,9 +68,10 @@ func scanUser(scanner userScanner, user *User) error {
 }
 
 type DailyEmailCandidate struct {
-	User      User
-	Post      sql.Null[Post]
-	SentCount int
+	User         User
+	Post         sql.Null[Post]
+	SentCount    int
+	PostedOnSend bool
 }
 
 type DailyPushCandidate struct {
@@ -1287,7 +1288,8 @@ func (db *DB) DailyEmailCandidates(sentOn string, limit int) ([]DailyEmailCandid
 	rows, err := db.Query(`
 select `+usersColumns+`,
        posts.id, posts.user_id, post_users.username, posts.word, posts.image_url, posts.image_focus_x, posts.image_focus_y, posts.created_at,
-       (select count(*) from daily_email_sends all_sends where all_sends.user_id = users.id)
+       (select count(*) from daily_email_sends all_sends where all_sends.user_id = users.id),
+       exists(select 1 from posts own_posts where own_posts.user_id = users.id and date(own_posts.created_at) = ?)
 from users
 left join daily_email_sends on daily_email_sends.user_id = users.id and daily_email_sends.sent_on = ?
 left join posts on posts.id = (
@@ -1309,7 +1311,7 @@ where users.email_opt_in = 1
   and `+activeUserFilter+`
   and daily_email_sends.user_id is null
 order by users.id asc
-limit ?`, sentOn, limit)
+limit ?`, sentOn, sentOn, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -1344,6 +1346,7 @@ limit ?`, sentOn, limit)
 			&focusY,
 			&postCreatedAt,
 			&candidate.SentCount,
+			&candidate.PostedOnSend,
 		); err != nil {
 			return nil, err
 		}

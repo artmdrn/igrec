@@ -72,3 +72,47 @@ func TestPostDaysReturnsDistinctDaysNewestFirst(t *testing.T) {
 		}
 	}
 }
+
+func TestDailyEmailCandidatesReportWhetherUserPostedOnSendDate(t *testing.T) {
+	db := testDB(t)
+	posted, err := db.CreateUser("posted", "posted@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waiting, err := db.CreateUser("waiting", "waiting@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, userID := range []int64{posted.ID, waiting.ID} {
+		if err := db.SetEmailOptIn(userID, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Exec(
+		`insert into posts (user_id, word, created_at) values (?, ?, ?)`,
+		posted.ID, "done", "2026-06-10 08:00:00",
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(
+		`insert into posts (user_id, word, created_at) values (?, ?, ?)`,
+		waiting.ID, "old", "2026-06-09 08:00:00",
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	candidates, err := db.DailyEmailCandidates("2026-06-10", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	postedByUsername := map[string]bool{}
+	for _, candidate := range candidates {
+		postedByUsername[candidate.User.Username] = candidate.PostedOnSend
+	}
+	if !postedByUsername["posted"] {
+		t.Fatalf("expected posted user to be marked posted on send date: %#v", postedByUsername)
+	}
+	if postedByUsername["waiting"] {
+		t.Fatalf("expected waiting user to be unposted on send date: %#v", postedByUsername)
+	}
+}

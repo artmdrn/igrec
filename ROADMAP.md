@@ -164,10 +164,10 @@ Done when:
 
 ### Private Streaks
 
-- Add a private streak counter.
-- Show streaks only in `/settings` and `/write`.
-- Never expose streaks publicly or through public profile pages.
-- Email subject shifts from `>` to `>>` if the user has not posted today.
+- [x] Add a private streak counter.
+- [x] Show streaks only in `/settings` and `/write`.
+- [x] Never expose streaks publicly or through public profile pages.
+- [x] Email subject shifts from `>` to `>>` if the user has not posted today.
 - Keep the tone informational, not guilt-driven.
 
 Done when:

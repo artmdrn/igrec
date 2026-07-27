@@ -50,6 +50,10 @@ func sendDailyEmails(cfg app.Config, db *store.DB) (int, error) {
 			post := candidate.Post.V
 			body = emailpkg.DailyPrompt(post.Username, post.Word, candidate.SentCount == 0, unsubscribe, onThisDayWord)
 		}
+		subject := ">>"
+		if candidate.PostedOnSend {
+			subject = ">"
+		}
 		err = sendPlainEmail(emailpkg.Resend{
 			APIKey:  cfg.ResendAPIKey,
 			From:    cfg.DailyEmailFrom,
@@ -58,7 +62,7 @@ func sendDailyEmails(cfg app.Config, db *store.DB) (int, error) {
 				"List-Unsubscribe":      "<" + unsubscribe + ">",
 				"List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
 			},
-		}, candidate.User.Email, ">", body)
+		}, candidate.User.Email, subject, body)
 		if err != nil {
 			return sent, fmt.Errorf("send daily email to %s: %w", candidate.User.Email, err)
 		}

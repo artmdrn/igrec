@@ -85,6 +85,51 @@ func TestSendDailyEmailsStaysSilentBeforeEligibleOnThisDay(t *testing.T) {
 	}
 }
 
+func TestSendDailyEmailsSubjectReflectsWhetherUserPostedToday(t *testing.T) {
+	db := testDailyDB(t)
+	posted, err := db.CreateUser("posted", "posted@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waiting, err := db.CreateUser("waiting", "waiting@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, userID := range []int64{posted.ID, waiting.ID} {
+		if err := db.SetEmailOptIn(userID, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.CreatePost(posted.ID, "done", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	originalSend := sendPlainEmail
+	t.Cleanup(func() { sendPlainEmail = originalSend })
+	subjects := map[string]string{}
+	sendPlainEmail = func(sender emailpkg.Resend, to, subject, sentBody string) error {
+		subjects[to] = subject
+		return nil
+	}
+
+	sent, err := sendDailyEmails(app.Config{
+		BaseURL:        "https://igrec.net",
+		DailyEmailFrom: "Y <_@igrec.net>",
+	}, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sent != 2 {
+		t.Fatalf("expected two emails sent, got %d", sent)
+	}
+	if subjects["posted@example.com"] != ">" {
+		t.Fatalf("expected posted user subject >, got %q", subjects["posted@example.com"])
+	}
+	if subjects["waiting@example.com"] != ">>" {
+		t.Fatalf("expected waiting user subject >>, got %q", subjects["waiting@example.com"])
+	}
+}
+
 func TestSendDailyPushesMarksSentAndPrunesStaleSubscriptions(t *testing.T) {
 	db := testDailyDB(t)
 	author, err := db.CreateUser("author", "author@example.com")
