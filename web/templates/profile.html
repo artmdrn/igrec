@@ -1,11 +1,11 @@
 {{template "head" .}}
 <main>
   <section class="profile">
-    <h1>@{{.User.Username}}</h1>
-    <p class="fediverse-address">@{{.User.Username}}@igrec.net</p>
+    <h1>{{if .Quiet}}·{{else}}@{{.User.Username}}{{end}}</h1>
+    {{if .Quiet}}<p class="fediverse-address">quiet</p>{{else}}<p class="fediverse-address">@{{.User.Username}}@igrec.net</p>{{end}}
     {{if .Inviter}}<p class="invited-by">invited by <a href="/@{{.Inviter.Username}}">@{{.Inviter.Username}}</a></p>{{end}}
     {{if .Title}}<p class="system-message">{{.Title}}</p>{{end}}
-    {{if .User.Domain}}<a rel="me" href="https://{{.User.Domain}}">{{.User.Domain}}</a>{{end}}
+    {{if and (not .Quiet) .User.Domain}}<a rel="me" href="https://{{.User.Domain}}">{{.User.Domain}}</a>{{end}}
     {{range .RelMeLinks}}<a rel="me" href="{{.}}">{{.}}</a>{{end}}
     {{if .BadgeURL}}<a class="badge-link" href="/@{{.User.Username}}/badge.svg">badge.svg</a>{{end}}
     {{if .CanFriend}}

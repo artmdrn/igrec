@@ -21,6 +21,8 @@ type postView struct {
 	DisplayTime string
 	MachineTime string
 	HasImage    bool
+	Byline      string
+	BylineURL   string
 	CaptionCSS  template.CSS
 	FocusCSS    template.CSS
 	URL         string
@@ -125,13 +127,14 @@ func (a *App) profile(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, "application/activity+json; charset=utf-8", activitypub.Note(a.cfg.BaseURL, post))
 			return
 		}
-		data := map[string]any{"Post": a.styledPostViews([]store.Post{post}, user.TimestampPreference)[0], "User": user}
+		postView := a.styledPostViews([]store.Post{post}, user.TimestampPreference)[0]
+		data := map[string]any{"Post": postView, "User": user}
 		if echoes, err := a.db.PostsByWord(post.Word, post.ID, 6); err == nil && len(echoes) > 0 {
 			data["Echoes"] = a.styledPostViews(echoes, "datetime")
 		}
-		data["PageTitle"] = post.Word + " by @" + post.Username
+		data["PageTitle"] = post.Word + " by " + postView.Byline
 		data["OGURL"] = postURL(a.cfg.BaseURL, post)
-		data["OGDescription"] = "@" + post.Username + " said: " + post.Word
+		data["OGDescription"] = postView.Byline + " " + post.Word
 		if post.ImageURL.Valid {
 			data["OGImage"] = absoluteURL(a.cfg.BaseURL, post.ImageURL.String)
 			data["OGImageType"] = "image/jpeg"
@@ -148,18 +151,22 @@ func (a *App) profile(w http.ResponseWriter, r *http.Request) {
 		a.render(w, r, "post.html", data)
 		return
 	}
-	data := map[string]any{"User": user, "Posts": a.styledPostViews(posts, user.TimestampPreference), "Months": months, "Title": title, "BadgeURL": badgeURL(a.cfg.BaseURL, user)}
-	if relMeLinks, err := a.db.RelMeLinksByUser(user.ID); err == nil && len(relMeLinks) > 0 {
-		data["RelMeLinks"] = relMeLinks
-	}
-	if inviter, err := a.db.InviterByUserID(user.ID); err == nil {
-		data["Inviter"] = inviter
-	}
-	if viewer, ok := a.currentUser(r); ok && viewer.ID != user.ID {
-		follows, err := a.db.UserFollows(viewer.ID, user.ID)
-		if err == nil {
-			data["CanFriend"] = true
-			data["IsFriend"] = follows
+	quiet := postsQuiet(posts)
+	data := map[string]any{"User": user, "Posts": a.styledPostViews(posts, user.TimestampPreference), "Months": months, "Title": title, "Quiet": quiet}
+	if !quiet {
+		data["BadgeURL"] = badgeURL(a.cfg.BaseURL, user)
+		if relMeLinks, err := a.db.RelMeLinksByUser(user.ID); err == nil && len(relMeLinks) > 0 {
+			data["RelMeLinks"] = relMeLinks
+		}
+		if inviter, err := a.db.InviterByUserID(user.ID); err == nil {
+			data["Inviter"] = inviter
+		}
+		if viewer, ok := a.currentUser(r); ok && viewer.ID != user.ID {
+			follows, err := a.db.UserFollows(viewer.ID, user.ID)
+			if err == nil {
+				data["CanFriend"] = true
+				data["IsFriend"] = follows
+			}
 		}
 	}
 	a.render(w, r, "profile.html", a.withCSRF(w, r, data))
@@ -352,6 +359,12 @@ func (a *App) styledPostViews(posts []store.Post, preference string) []postView 
 	for i := range views {
 		views[i].URL = postURL(a.cfg.BaseURL, views[i].Post)
 		views[i].PreviewURL = previewCardURL(a.cfg.BaseURL, views[i].Post)
+		views[i].Byline = "@" + views[i].Username
+		if views[i].Quiet {
+			views[i].Byline = "·"
+		} else {
+			views[i].BylineURL = "/@" + url.PathEscape(views[i].Username)
+		}
 		if !views[i].HasImage {
 			continue
 		}
@@ -359,6 +372,10 @@ func (a *App) styledPostViews(posts []store.Post, preference string) []postView 
 		views[i].FocusCSS = imageFocusCSS(views[i].Post)
 	}
 	return views
+}
+
+func postsQuiet(posts []store.Post) bool {
+	return len(posts) > 0 && posts[0].Quiet
 }
 
 func maxInt(a, b int) int {

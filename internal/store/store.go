@@ -41,6 +41,7 @@ type Post struct {
 	FocusX    float64
 	FocusY    float64
 	CreatedAt time.Time
+	Quiet     bool
 }
 
 type Invite struct {
@@ -56,15 +57,24 @@ type userScanner interface {
 }
 
 const (
-	userColumns      = `id, username, domain, email, fediverse_acct, email_opt_in, timestamp_preference, migration_target, suspended_at, created_at`
-	usersColumns     = `users.id, users.username, users.domain, users.email, users.fediverse_acct, users.email_opt_in, users.timestamp_preference, users.migration_target, users.suspended_at, users.created_at`
-	activeUserFilter = `users.suspended_at is null`
+	userColumns                 = `id, username, domain, email, fediverse_acct, email_opt_in, timestamp_preference, migration_target, suspended_at, created_at`
+	usersColumns                = `users.id, users.username, users.domain, users.email, users.fediverse_acct, users.email_opt_in, users.timestamp_preference, users.migration_target, users.suspended_at, users.created_at`
+	activeUserFilter            = `users.suspended_at is null`
+	activeOrUnstartedUserFilter = `(not exists (select 1 from posts own_posts where own_posts.user_id = users.id) or exists (select 1 from posts recent_own_posts where recent_own_posts.user_id = users.id and recent_own_posts.created_at >= datetime('now', '-1 year')))`
 )
 
 func scanUser(scanner userScanner, user *User) error {
 	err := scanner.Scan(&user.ID, &user.Username, &user.Domain, &user.Email, &user.FediverseAcct, &user.EmailOptIn, &user.TimestampPreference, &user.MigrationTarget, &user.SuspendedAt, &user.CreatedAt)
 	user.TimestampPreference = normalizeTimestampPreference(user.TimestampPreference)
 	return err
+}
+
+type postScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanPost(scanner postScanner, post *Post) error {
+	return scanner.Scan(&post.ID, &post.UserID, &post.Username, &post.Word, &post.ImageURL, &post.FocusX, &post.FocusY, &post.CreatedAt, &post.Quiet)
 }
 
 type DailyEmailCandidate struct {
@@ -847,12 +857,12 @@ order by lower(users.username) asc`, userID)
 }
 
 func (db *DB) FriendPosts(userID int64, limit int) ([]Post, error) {
-	return db.posts(`where posts.user_id in (select followed_user_id from user_follows where follower_user_id = ?)`, limit, userID)
+	return db.posts(`where posts.user_id in (select followed_user_id from user_follows where follower_user_id = ?) and exists (select 1 from posts recent_author_posts where recent_author_posts.user_id = posts.user_id and recent_author_posts.created_at >= datetime('now', '-1 year'))`, limit, userID)
 }
 
 func (db *DB) FriendPostsBefore(userID, beforeID int64, limit int) ([]Post, error) {
 	if beforeID > 0 {
-		return db.posts(`where posts.user_id in (select followed_user_id from user_follows where follower_user_id = ?) and posts.id < ?`, limit, userID, beforeID)
+		return db.posts(`where posts.user_id in (select followed_user_id from user_follows where follower_user_id = ?) and exists (select 1 from posts recent_author_posts where recent_author_posts.user_id = posts.user_id and recent_author_posts.created_at >= datetime('now', '-1 year')) and posts.id < ?`, limit, userID, beforeID)
 	}
 	return db.FriendPosts(userID, limit)
 }
@@ -1288,6 +1298,7 @@ func (db *DB) DailyEmailCandidates(sentOn string, limit int) ([]DailyEmailCandid
 	rows, err := db.Query(`
 select `+usersColumns+`,
        posts.id, posts.user_id, post_users.username, posts.word, posts.image_url, posts.image_focus_x, posts.image_focus_y, posts.created_at,
+       coalesce((select max(author_posts.created_at) < datetime('now', '-1 year') from posts author_posts where author_posts.user_id = post_users.id), 0),
        (select count(*) from daily_email_sends all_sends where all_sends.user_id = users.id),
        exists(select 1 from posts own_posts where own_posts.user_id = users.id and date(own_posts.created_at) = ?)
 from users
@@ -1302,6 +1313,7 @@ left join posts on posts.id = (
       and posts.user_id != users.id
     )
   )
+  and exists (select 1 from posts recent_author_posts where recent_author_posts.user_id = posts.user_id and recent_author_posts.created_at >= datetime('now', '-1 year'))
   order by posts.created_at desc, posts.id desc
   limit 1
 )
@@ -1309,6 +1321,7 @@ left join users post_users on post_users.id = posts.user_id
 where users.email_opt_in = 1
   and users.email != ''
   and `+activeUserFilter+`
+  and `+activeOrUnstartedUserFilter+`
   and daily_email_sends.user_id is null
 order by users.id asc
 limit ?`, sentOn, sentOn, limit)
@@ -1326,6 +1339,7 @@ limit ?`, sentOn, sentOn, limit)
 		var imageURL sql.NullString
 		var focusX, focusY sql.NullFloat64
 		var postCreatedAt sql.NullTime
+		var postQuiet sql.NullBool
 		if err := rows.Scan(
 			&candidate.User.ID,
 			&candidate.User.Username,
@@ -1345,6 +1359,7 @@ limit ?`, sentOn, sentOn, limit)
 			&focusX,
 			&focusY,
 			&postCreatedAt,
+			&postQuiet,
 			&candidate.SentCount,
 			&candidate.PostedOnSend,
 		); err != nil {
@@ -1366,6 +1381,7 @@ limit ?`, sentOn, sentOn, limit)
 				post.FocusY = focusY.Float64
 			}
 			post.CreatedAt = postCreatedAt.Time
+			post.Quiet = postQuiet.Valid && postQuiet.Bool
 			candidate.Post = sql.Null[Post]{V: post, Valid: true}
 		}
 		candidates = append(candidates, candidate)
@@ -1377,6 +1393,7 @@ func (db *DB) DailyPushCandidates(sentOn string, limit int) ([]DailyPushCandidat
 	rows, err := db.Query(`
 select `+usersColumns+`,
        posts.id, posts.user_id, post_users.username, posts.word, posts.image_url, posts.image_focus_x, posts.image_focus_y, posts.created_at,
+       coalesce((select max(author_posts.created_at) < datetime('now', '-1 year') from posts author_posts where author_posts.user_id = post_users.id), 0),
        (select count(*) from daily_push_sends all_sends where all_sends.user_id = users.id)
 from users
 join (select distinct user_id from push_subscriptions) subscribed_users on subscribed_users.user_id = users.id
@@ -1391,12 +1408,14 @@ left join posts on posts.id = (
       and posts.user_id != users.id
     )
   )
+  and exists (select 1 from posts recent_author_posts where recent_author_posts.user_id = posts.user_id and recent_author_posts.created_at >= datetime('now', '-1 year'))
   order by posts.created_at desc, posts.id desc
   limit 1
 )
 left join users post_users on post_users.id = posts.user_id
 where daily_push_sends.user_id is null
   and `+activeUserFilter+`
+  and `+activeOrUnstartedUserFilter+`
 order by users.id asc
 limit ?`, sentOn, limit)
 	if err != nil {
@@ -1413,6 +1432,7 @@ limit ?`, sentOn, limit)
 		var imageURL sql.NullString
 		var focusX, focusY sql.NullFloat64
 		var postCreatedAt sql.NullTime
+		var postQuiet sql.NullBool
 		if err := rows.Scan(
 			&candidate.User.ID,
 			&candidate.User.Username,
@@ -1432,6 +1452,7 @@ limit ?`, sentOn, limit)
 			&focusX,
 			&focusY,
 			&postCreatedAt,
+			&postQuiet,
 			&candidate.SentCount,
 		); err != nil {
 			return nil, err
@@ -1452,6 +1473,7 @@ limit ?`, sentOn, limit)
 				post.FocusY = focusY.Float64
 			}
 			post.CreatedAt = postCreatedAt.Time
+			post.Quiet = postQuiet.Valid && postQuiet.Bool
 			candidate.Post = sql.Null[Post]{V: post, Valid: true}
 		}
 		candidates = append(candidates, candidate)
@@ -1588,22 +1610,24 @@ func normalizeTimestampPreference(preference string) string {
 func (db *DB) PostByID(id int64) (Post, error) {
 	var post Post
 	err := db.QueryRow(`
-select posts.id, posts.user_id, users.username, posts.word, posts.image_url, posts.image_focus_x, posts.image_focus_y, posts.created_at
+select posts.id, posts.user_id, users.username, posts.word, posts.image_url, posts.image_focus_x, posts.image_focus_y, posts.created_at,
+       coalesce((select max(owner_posts.created_at) < datetime('now', '-1 year') from posts owner_posts where owner_posts.user_id = users.id), 0)
 from posts join users on users.id = posts.user_id
 where posts.id = ?`, id).
-		Scan(&post.ID, &post.UserID, &post.Username, &post.Word, &post.ImageURL, &post.FocusX, &post.FocusY, &post.CreatedAt)
+		Scan(&post.ID, &post.UserID, &post.Username, &post.Word, &post.ImageURL, &post.FocusX, &post.FocusY, &post.CreatedAt, &post.Quiet)
 	return post, err
 }
 
 func (db *DB) PostByUserWord(username, value string) (Post, error) {
 	var post Post
 	err := db.QueryRow(`
-select posts.id, posts.user_id, users.username, posts.word, posts.image_url, posts.image_focus_x, posts.image_focus_y, posts.created_at
+select posts.id, posts.user_id, users.username, posts.word, posts.image_url, posts.image_focus_x, posts.image_focus_y, posts.created_at,
+       coalesce((select max(owner_posts.created_at) < datetime('now', '-1 year') from posts owner_posts where owner_posts.user_id = users.id), 0)
 from posts join users on users.id = posts.user_id
 where users.username = ? and posts.word = ?
 order by posts.created_at desc, posts.id desc
 limit 1`, username, value).
-		Scan(&post.ID, &post.UserID, &post.Username, &post.Word, &post.ImageURL, &post.FocusX, &post.FocusY, &post.CreatedAt)
+		Scan(&post.ID, &post.UserID, &post.Username, &post.Word, &post.ImageURL, &post.FocusX, &post.FocusY, &post.CreatedAt, &post.Quiet)
 	return post, err
 }
 
@@ -1711,7 +1735,8 @@ func (db *DB) count(query string, args ...any) (int, error) {
 func (db *DB) posts(where string, limit int, args ...any) ([]Post, error) {
 	args = append(args, limit)
 	rows, err := db.Query(fmt.Sprintf(`
-select posts.id, posts.user_id, users.username, posts.word, posts.image_url, posts.image_focus_x, posts.image_focus_y, posts.created_at
+select posts.id, posts.user_id, users.username, posts.word, posts.image_url, posts.image_focus_x, posts.image_focus_y, posts.created_at,
+       coalesce((select max(owner_posts.created_at) < datetime('now', '-1 year') from posts owner_posts where owner_posts.user_id = users.id), 0)
 from posts join users on users.id = posts.user_id
 %s
 order by posts.created_at desc, posts.id desc
@@ -1724,7 +1749,7 @@ limit ?`, where), args...)
 	var posts []Post
 	for rows.Next() {
 		var post Post
-		if err := rows.Scan(&post.ID, &post.UserID, &post.Username, &post.Word, &post.ImageURL, &post.FocusX, &post.FocusY, &post.CreatedAt); err != nil {
+		if err := scanPost(rows, &post); err != nil {
 			return nil, err
 		}
 		posts = append(posts, post)
@@ -1734,7 +1759,8 @@ limit ?`, where), args...)
 
 func (db *DB) postsWithoutLimit(where string, args ...any) ([]Post, error) {
 	rows, err := db.Query(fmt.Sprintf(`
-select posts.id, posts.user_id, users.username, posts.word, posts.image_url, posts.image_focus_x, posts.image_focus_y, posts.created_at
+select posts.id, posts.user_id, users.username, posts.word, posts.image_url, posts.image_focus_x, posts.image_focus_y, posts.created_at,
+       coalesce((select max(owner_posts.created_at) < datetime('now', '-1 year') from posts owner_posts where owner_posts.user_id = users.id), 0)
 from posts join users on users.id = posts.user_id
 %s
 order by posts.created_at desc, posts.id desc`, where), args...)
@@ -1746,7 +1772,7 @@ order by posts.created_at desc, posts.id desc`, where), args...)
 	var posts []Post
 	for rows.Next() {
 		var post Post
-		if err := rows.Scan(&post.ID, &post.UserID, &post.Username, &post.Word, &post.ImageURL, &post.FocusX, &post.FocusY, &post.CreatedAt); err != nil {
+		if err := scanPost(rows, &post); err != nil {
 			return nil, err
 		}
 		posts = append(posts, post)

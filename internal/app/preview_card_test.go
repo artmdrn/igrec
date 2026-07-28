@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestPostPreviewCardServesPNG(t *testing.T) {
@@ -172,6 +173,37 @@ func TestCanonicalDuplicatePostPathShowsOlderPost(t *testing.T) {
 	}
 	if first.ID != 1 {
 		t.Fatalf("expected deterministic first post id, got %d", first.ID)
+	}
+}
+
+func TestPostPageRendersQuietAttributionWithoutProfileLink(t *testing.T) {
+	a := testApp(t)
+	user, err := a.db.CreateUser("lastword", "lastword@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	post, err := a.db.CreatePost(user.ID, "ember", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	staleAt := time.Now().UTC().AddDate(-1, 0, -2).Format("2006-01-02 15:04:05")
+	if _, err := a.db.Exec(`update posts set created_at = ? where id = ?`, staleAt, post.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/@lastword/1-ember", nil)
+	w := httptest.NewRecorder()
+	a.profile(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, `<span class="said">·</span>`) {
+		t.Fatalf("expected quiet dot attribution, got %s", body)
+	}
+	if strings.Contains(body, `class="said" href="/@lastword"`) || strings.Contains(body, `>@lastword</a>`) {
+		t.Fatalf("expected no linked username attribution, got %s", body)
 	}
 }
 

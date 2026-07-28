@@ -1,7 +1,7 @@
 {{template "head" .}}
 <main class="feed">
   <article class="word {{if .Post.HasImage}}word-photo{{end}}">
-    <a class="said" href="/@{{.User.Username}}">@{{.User.Username}}</a>
+    {{if .Post.BylineURL}}<a class="said" href="{{.Post.BylineURL}}">{{.Post.Byline}}</a>{{else}}<span class="said">{{.Post.Byline}}</span>{{end}}
     {{if .Post.HasImage}}
       <a class="photo" href="{{.Post.URL}}">
         <img src="{{.Post.ImageURL.String}}" alt="" style="{{.Post.FocusCSS}}">
@@ -19,7 +19,7 @@
       <div>
         {{range .Echoes}}
           <a href="{{.URL}}">
-            <span>@{{.Username}}</span>
+            <span>{{.Byline}}</span>
             <time datetime="{{.MachineTime}}">{{.DisplayTime}}</time>
           </a>
         {{end}}

@@ -253,6 +253,99 @@ func TestDailyPushCandidatesFollowSubscriptionsAndDayLedger(t *testing.T) {
 	}
 }
 
+func TestInactiveUserPostsAreQuietAndSkippedByFriendFeeds(t *testing.T) {
+	db := testDB(t)
+	quiet, err := db.CreateUser("quiet", "quiet@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	active, err := db.CreateUser("active", "active@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, err := db.CreateUser("reader", "reader@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CreateUserFollow(reader.ID, quiet.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CreateUserFollow(reader.ID, active.ID); err != nil {
+		t.Fatal(err)
+	}
+	staleAt := time.Now().UTC().AddDate(-1, 0, -2).Format("2006-01-02 15:04:05")
+	recentAt := time.Now().UTC().AddDate(0, 0, -2).Format("2006-01-02 15:04:05")
+	if _, err := db.Exec(`insert into posts (user_id, word, created_at) values (?, ?, ?)`, quiet.ID, "ember", staleAt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`insert into posts (user_id, word, created_at) values (?, ?, ?)`, active.ID, "signal", recentAt); err != nil {
+		t.Fatal(err)
+	}
+
+	posts, err := db.Firehose(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	quietByUsername := map[string]bool{}
+	for _, post := range posts {
+		quietByUsername[post.Username] = post.Quiet
+	}
+	if !quietByUsername["quiet"] {
+		t.Fatalf("expected stale user's post to be quiet: %#v", quietByUsername)
+	}
+	if quietByUsername["active"] {
+		t.Fatalf("expected recent user's post to stay active: %#v", quietByUsername)
+	}
+
+	friendPosts, err := db.FriendPosts(reader.ID, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(friendPosts) != 1 || friendPosts[0].Username != "active" {
+		t.Fatalf("expected only active followed posts, got %#v", friendPosts)
+	}
+}
+
+func TestDailyEmailCandidatesSkipInactiveRecipients(t *testing.T) {
+	db := testDB(t)
+	quiet, err := db.CreateUser("quietmail", "quietmail@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	newUser, err := db.CreateUser("newmail", "newmail@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, userID := range []int64{quiet.ID, newUser.ID} {
+		if err := db.SetEmailOptIn(userID, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	staleAt := time.Now().UTC().AddDate(-1, 0, -2).Format("2006-01-02 15:04:05")
+	if _, err := db.Exec(`insert into posts (user_id, word, created_at) values (?, ?, ?)`, quiet.ID, "ember", staleAt); err != nil {
+		t.Fatal(err)
+	}
+
+	candidates, err := db.DailyEmailCandidates(dayKeyForTest(time.Now()), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, candidate := range candidates {
+		seen[candidate.User.Username] = true
+	}
+	if seen["quietmail"] {
+		t.Fatalf("expected inactive recipient to be skipped: %#v", seen)
+	}
+	if !seen["newmail"] {
+		t.Fatalf("expected unstarted recipient to remain eligible: %#v", seen)
+	}
+}
+
+func dayKeyForTest(t time.Time) string {
+	return t.Format("2006-01-02")
+}
+
 func TestRelMeLinksRoundTrip(t *testing.T) {
 	db := testDB(t)
 	user, err := db.CreateUser("links", "links@example.com")

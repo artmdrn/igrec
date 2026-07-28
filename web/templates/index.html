@@ -9,7 +9,7 @@
   {{end}}
   {{range .Posts}}
     <article class="word {{if .HasImage}}word-photo{{end}}">
-      <a class="said" href="/@{{.Username}}">@{{.Username}}</a>
+      {{if .BylineURL}}<a class="said" href="{{.BylineURL}}">{{.Byline}}</a>{{else}}<span class="said">{{.Byline}}</span>{{end}}
       {{if .HasImage}}
         <a class="photo" href="{{.URL}}">
           <img src="{{.ImageURL.String}}" alt="" style="{{.FocusCSS}}">

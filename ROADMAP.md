@@ -178,13 +178,13 @@ Done when:
 
 ### Last Word
 
-- After one year of inactivity, not deletion, an account goes quiet.
-- The final word remains permanently in archives.
-- The final word is attributed as `·` with no profile link.
+- [x] After one year of inactivity, not deletion, an account goes quiet.
+- [x] The final word remains permanently in archives.
+- [x] The final word is attributed as `·` with no profile link.
 - Example display: `· ember`
 
 Done when:
 
-- Inactive accounts stop behaving as active profiles after one year.
-- Their final word remains visible and stable.
-- Public rendering uses the anonymous dot attribution without linking to the profile.
+- [x] Inactive accounts stop behaving as active profiles after one year.
+- [x] Their final word remains visible and stable.
+- [x] Public rendering uses the anonymous dot attribution without linking to the profile.

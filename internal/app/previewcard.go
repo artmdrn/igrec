@@ -137,6 +137,9 @@ func renderPreviewCard(post store.Post) (image.Image, error) {
 	drawText(img, ttf, post.Word, wordSize, wordX, wordY, color.RGBA{5, 7, 12, 255})
 
 	byline := "@" + post.Username
+	if post.Quiet {
+		byline = "·"
+	}
 	drawText(img, ttf, byline, 34, centeredTextX(ttf, byline, 34, width), 466, color.RGBA{5, 7, 12, 255})
 	drawText(img, ttf, post.CreatedAt.Format("2006-01-02 15:04"), 24, 80, 548, color.RGBA{5, 7, 12, 255})
 	drawText(img, ttf, "igrec.net", 24, width-220, 548, color.RGBA{5, 7, 12, 255})
