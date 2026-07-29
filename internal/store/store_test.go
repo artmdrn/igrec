@@ -2,11 +2,13 @@ package store
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/go-webauthn/webauthn/webauthn"
 	"igrec.net/igrec/internal/word"
 )
 
@@ -58,6 +60,12 @@ func TestDeleteUserRemovesDependentRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := db.CreateLoginToken("login-hash", user.ID, time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SavePasskey(user.ID, "phone", webauthn.Credential{ID: []byte("delete-passkey"), PublicKey: []byte("public")}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CreateWebAuthnSession("webauthn-session", sql.NullInt64{Int64: user.ID, Valid: true}, "register", []byte(`{"challenge":"delete"}`), time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.LinkAuthIdentity(user.ID, "indieauth_domain", "delete.example"); err != nil {
@@ -113,12 +121,116 @@ func TestDeleteUserRemovesDependentRecords(t *testing.T) {
 	if _, err := db.InviteByCode("invite-a"); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("expected inviter-owned invite to be deleted, got %v", err)
 	}
+	if count, err := db.PasskeyCount(user.ID); err != nil || count != 0 {
+		t.Fatalf("expected passkeys to be deleted, got count=%d err=%v", count, err)
+	}
+	if _, err := db.UseWebAuthnSession("webauthn-session", "register"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected webauthn sessions to be deleted, got %v", err)
+	}
 	invite, err := db.InviteByCode("invite-b")
 	if err != nil {
 		t.Fatalf("expected redeemed invite record to remain, got %v", err)
 	}
 	if invite.UsedBy.Valid {
 		t.Fatalf("expected redeemed invite to be detached from deleted user, got used_by=%d", invite.UsedBy.Int64)
+	}
+}
+
+func TestPasskeyCredentialLifecycle(t *testing.T) {
+	db := testDB(t)
+	user, err := db.CreateUser("passkeyuser", "passkey@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential := webauthn.Credential{ID: []byte("credential-id"), PublicKey: []byte("public-key")}
+	if err := db.SavePasskey(user.ID, "  laptop  ", credential); err != nil {
+		t.Fatal(err)
+	}
+
+	credentials, err := db.PasskeyCredentialsByUser(user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(credentials) != 1 || string(credentials[0].ID) != "credential-id" || string(credentials[0].PublicKey) != "public-key" {
+		t.Fatalf("unexpected credentials %#v", credentials)
+	}
+	if count, err := db.PasskeyCount(user.ID); err != nil || count != 1 {
+		t.Fatalf("expected 1 passkey, got %d err=%v", count, err)
+	}
+	found, err := db.UserByPasskeyID([]byte("credential-id"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found.ID != user.ID {
+		t.Fatalf("expected user %d, got %d", user.ID, found.ID)
+	}
+
+	credential.PublicKey = []byte("rotated-public-key")
+	if err := db.UpdatePasskeyCredential(credential); err != nil {
+		t.Fatal(err)
+	}
+	credentials, err = db.PasskeyCredentialsByUser(user.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(credentials[0].PublicKey) != "rotated-public-key" {
+		t.Fatalf("expected updated credential, got %#v", credentials[0])
+	}
+
+	if err := db.SuspendUser(user.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.UserByPasskeyID([]byte("credential-id")); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected suspended passkey lookup to fail, got %v", err)
+	}
+}
+
+func TestWebAuthnSessionLifecycle(t *testing.T) {
+	db := testDB(t)
+	user, err := db.CreateUser("webauthnuser", "webauthn@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := webauthn.SessionData{
+		Challenge:      "challenge",
+		RelyingPartyID: "igrec.example",
+		UserID:         []byte("user-handle"),
+		Expires:        time.Now().Add(5 * time.Minute).UTC(),
+	}
+	raw, err := json.Marshal(session)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := db.CreateWebAuthnSession("session", sql.NullInt64{Int64: user.ID, Valid: true}, "register", raw, time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.UseWebAuthnSession("session", "login"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected wrong-kind session lookup to fail, got %v", err)
+	}
+	record, err := db.UseWebAuthnSession("session", "register")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !record.UserID.Valid || record.UserID.Int64 != user.ID {
+		t.Fatalf("unexpected session user %#v", record.UserID)
+	}
+	var restored webauthn.SessionData
+	if err := json.Unmarshal(record.Data, &restored); err != nil {
+		t.Fatal(err)
+	}
+	if restored.Challenge != session.Challenge || restored.RelyingPartyID != session.RelyingPartyID || string(restored.UserID) != string(session.UserID) {
+		t.Fatalf("unexpected restored session %#v", restored)
+	}
+	if _, err := db.UseWebAuthnSession("session", "register"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected consumed session lookup to fail, got %v", err)
+	}
+
+	if err := db.CreateWebAuthnSession("expired", sql.NullInt64{}, "login", []byte(`{"challenge":"expired"}`), time.Now().Add(-time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.UseWebAuthnSession("expired", "login"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected expired session lookup to fail, got %v", err)
 	}
 }
 
