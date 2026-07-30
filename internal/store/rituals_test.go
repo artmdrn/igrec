@@ -116,3 +116,60 @@ func TestDailyEmailCandidatesReportWhetherUserPostedOnSendDate(t *testing.T) {
 		t.Fatalf("expected waiting user to be unposted on send date: %#v", postedByUsername)
 	}
 }
+
+func TestDailyEmailCandidatesPreferFollowedPostsWithFallback(t *testing.T) {
+	db := testDB(t)
+	reader, err := db.CreateUser("reader", "reader@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	followerless, err := db.CreateUser("followerless", "followerless@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	followed, err := db.CreateUser("followed", "followed@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stranger, err := db.CreateUser("stranger", "stranger@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, userID := range []int64{reader.ID, followerless.ID} {
+		if err := db.SetEmailOptIn(userID, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.CreateUserFollow(reader.ID, followed.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(
+		`insert into posts (user_id, word, created_at) values (?, ?, ?)`,
+		followed.ID, "followed", "2026-06-10 08:00:00",
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(
+		`insert into posts (user_id, word, created_at) values (?, ?, ?)`,
+		stranger.ID, "stranger", "2026-06-10 09:00:00",
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	candidates, err := db.DailyEmailCandidates("2026-06-11", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wordsByUsername := map[string]string{}
+	for _, candidate := range candidates {
+		if candidate.Post.Valid {
+			wordsByUsername[candidate.User.Username] = candidate.Post.V.Word
+		}
+	}
+	if wordsByUsername["reader"] != "followed" {
+		t.Fatalf("expected followed post for reader, got %#v", wordsByUsername)
+	}
+	if wordsByUsername["followerless"] != "stranger" {
+		t.Fatalf("expected newest non-self fallback for user without follows, got %#v", wordsByUsername)
+	}
+}

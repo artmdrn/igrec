@@ -36,7 +36,7 @@ go run ./cmd/igrec send-daily-email
 Production runs this through `igrec-daily-email.timer` at 08:20 Europe/Paris.
 The same job now mirrors the daily prompt to stored browser push subscriptions when VAPID keys are configured.
 Local follows also trigger a browser push to the followed account when that user has active subscriptions, linking straight to the follower profile.
-During beta, the nudge uses the newest word from someone else; once local follow relationships exist, the same job should narrow that source to followed accounts.
+Daily nudges use the newest word from a followed account when the recipient follows anyone, falling back to the newest word from someone else for recipients without follows.
 
 ## API and export
 
