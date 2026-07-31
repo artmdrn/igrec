@@ -30,6 +30,9 @@ GitHub environment secrets `CLOUDFLARE_ORIGIN_CERT` and
 After the first successful deploy, set Cloudflare SSL/TLS encryption mode
 to `Full (strict)` for the zone.
 
+For exposed or stale credentials, follow the key rotation runbook:
+`deploy/KEY_ROTATION.md`.
+
 ## 3) One-command post-deploy verification sequence
 
 Run this after the GitHub Deploy workflow finishes:

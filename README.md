@@ -143,6 +143,7 @@ Current Cloudflare status:
 The Oracle host is `79.72.31.189` (`codex-standby-vnic`). It runs igrec from `/opt/igrec` as `igrec.service`, bound to `127.0.0.1:8097` behind nginx. The matching service and nginx files live in `deploy/systemd/igrec.service` and `deploy/nginx/igrec.net`.
 
 Deployment and verification checklist: `deploy/ORACLE_DEPLOY_CHECKLIST.md`.
+Key rotation runbook: `deploy/KEY_ROTATION.md`.
 
 ## CI/CD
 
